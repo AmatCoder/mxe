@@ -1,0 +1,6033 @@
+Contains (working but experimental) patches to force native windows theme on static builds.
+
+--- a/gtk/gtkrc.c	2014-09-29 22:02:17.000000000 +0200
++++ b/gtk/gtkrc.c	2015-04-21 16:47:58.969475898 +0100
+@@ -874,45 +874,46 @@
+       gtk_rc_add_initial_default_files ();
+     }
+   
+-  /* Default RC string */
+-  gtk_rc_parse_string ("style \"gtk-default-tooltips-style\" {\n"
+-		       "  bg[NORMAL] = \"#eee1b3\"\n"
+-		       "  fg[NORMAL] = \"#000000\"\n"
+-		       "}\n"
+-		       "\n"
+-		       "style \"gtk-default-progress-bar-style\" {\n"
+-		       "  bg[PRELIGHT] = \"#4b6983\"\n"
+-		       "  fg[PRELIGHT] = \"#ffffff\"\n"
+-		       "  bg[NORMAL]   = \"#c4c2bd\"\n"
+-		       "}\n"
+-		       "\n"
+-		       "style \"gtk-default-entry-style\" {\n"
+-		       "  bg[SELECTED] = \"#b7c3cd\"\n"
+-		       "  fg[SELECTED] = \"#000000\"\n"
+-		       "}\n"
+-		       "\n"
+-		       "style \"gtk-default-menu-bar-item-style\" {\n"
+-		       "  GtkMenuItem::horizontal_padding = 5\n"
+-		       "}\n"
+-		       "\n"
+-		       "style \"gtk-default-menu-item-style\" {\n"
+-		       "  bg[PRELIGHT] = \"#4b6983\"\n"
+-		       "  fg[PRELIGHT] = \"#ffffff\"\n"
+-		       "  base[PRELIGHT] = \"#4b6983\"\n"
+-		       "  text[PRELIGHT] = \"#ffffff\"\n"
+-		       "}\n"
+-		       "\n"
+-                       /* Work around clipping of accelerator underlines */
+-                       "style \"gtk-default-label-style\" {\n"
+-                       "  GtkWidget::draw-border = {0,0,0,1}\n"
+-                       "}\n"
+-                       "\n"    
+-		       "class \"GtkProgressBar\" style : gtk \"gtk-default-progress-bar-style\"\n"
+-		       "class \"GtkEntry\" style : gtk \"gtk-default-entry-style\"\n"
+-		       "widget \"gtk-tooltip*\" style : gtk \"gtk-default-tooltips-style\"\n"
+-		       "widget_class \"*<GtkMenuItem>*\" style : gtk \"gtk-default-menu-item-style\"\n"
+-		       "widget_class \"*<GtkMenuBar>*<GtkMenuItem>\" style : gtk \"gtk-default-menu-bar-item-style\"\n"
+-                       "class \"GtkLabel\" style : gtk \"gtk-default-label-style\"\n"
++  /* Default RC string - ms-windows theme*/
++  gtk_rc_parse_string ("gtk-icon-sizes = \"gtk-menu=13,13:gtk-small-toolbar=16,16:gtk-large-toolbar=24,24:gtk-dnd=32,32\"\n"
++"gtk-toolbar-icon-size = small-toolbar\n"
++"gtk-button-images = 0\n"
++"gtk-menu-images = 0\n"
++"gtk-alternative-button-order = 1\n"
++"gtk-alternative-sort-arrows = 1\n"
++"gtk-error-bell = 1\n"
++"style \"msw-default\" {\n"
++"  GtkWidget::interior-focus = 1\n"
++"  GtkOptionMenu::indicator-size = { 9, 5 }\n"
++"  GtkOptionMenu::indicator-spacing = { 7, 5, 2, 2 }\n"
++"  GtkSpinButton::shadow-type = in\n"
++" GtkComboBox::appears-as-list = 1\n"
++" GtkComboBox::focus-on-click = 0\n"
++" GOComboBox::add_tearoffs = 0\n"
++" GtkTreeView::allow-rules = 0\n"
++" GtkTreeView::expander-size = 12\n"
++" GtkExpander::expander-size = 12\n"
++" GtkScrolledWindow::scrollbar_spacing = 1\n"
++" GtkSeparatorMenuItem::horizontal-padding = 2\n"
++" engine \"wimp\"\n"
++" {\n"
++" }\n"
++"}\n"
++"class \"*\" style \"msw-default\"\n"
++"binding \"ms-windows-tree-view\"\n"
++"{\n"
++" bind \"Right\" { \"expand-collapse-cursor-row\" (1,1,0) }\n"
++" bind \"Left\" { \"expand-collapse-cursor-row\" (1,0,0) }\n"
++"}\n"
++"class \"GtkTreeView\" binding \"ms-windows-tree-view\"\n"
++"style \"msw-combobox-thickness\" = \"msw-default\"\n"
++"{\n"
++" xthickness = 0\n"
++" ythickness = 0\n"
++"}\n"
++"widget_class \"*TreeView*ComboBox*\" style \"msw-combobox-thickness\"\n"
++"widget_class \"*ComboBox*GtkFrame*\" style \"msw-combobox-thickness\"\n"
++"\n"
+       );
+ }
+   
+
+--- a/gtk/gtkthemes.c	2014-09-29 22:02:17.000000000 +0200
++++ b/gtk/gtkthemes.c	2015-02-21 15:30:22.908943550 +0100
+@@ -29,12 +29,28 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <gmodule.h>
+ #include "gtkthemes.h"
+ #include "gtkrc.h"
+ #include "gtkintl.h"
+ #include "gtkalias.h"
+ 
++#include <windows.h>
++#include "gtk/gtk.h"
++
++#include "modules/engines/ms-windows/msw_style.h"
++#include "modules/engines/ms-windows/msw_rc_style.h"
++#include "modules/engines/ms-windows/xp_theme.h"
++
++#ifndef WM_THEMECHANGED
++#define WM_THEMECHANGED 0x031A	/* winxp only */
++#endif
++
++static GModule *this_module = NULL;
++static void (*msw_rc_reset_styles) (GtkSettings *settings) = NULL;
++static GdkWindow *hidden_msg_window = NULL;
++
+ typedef struct _GtkThemeEngineClass GtkThemeEngineClass;
+ 
+ struct _GtkThemeEngine
+@@ -57,9 +73,75 @@ struct _GtkThemeEngineClass
+ 
+ static GHashTable *engine_hash = NULL;
+ 
++
++static GdkWindow *
++create_hidden_msg_window (void)
++{
++  GdkWindowAttr attributes;
++  gint attributes_mask;
++
++  attributes.x = -100;
++  attributes.y = -100;
++  attributes.width = 10;
++  attributes.height = 10;
++  attributes.window_type = GDK_WINDOW_TEMP;
++  attributes.wclass = GDK_INPUT_ONLY;
++  attributes.override_redirect = TRUE;
++  attributes.event_mask = 0;
++
++  attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_NOREDIR;
++
++  return gdk_window_new (gdk_get_default_root_window (),
++			 &attributes, attributes_mask);
++}
++
++static GdkFilterReturn
++global_filter_func (void *xevent, GdkEvent *event, gpointer data)
++ {
++  MSG *msg = (MSG *) xevent;
++
++  switch (msg->message)
++     {
++      /* catch theme changes */
++    case WM_THEMECHANGED:
++    case WM_SYSCOLORCHANGE:
++
++      if (msw_rc_reset_styles != NULL)
++	{
++	  xp_theme_reset ();
++	  msw_style_init ();
++
++	  /* force all gtkwidgets to redraw */
++	  (*msw_rc_reset_styles) (gtk_settings_get_default ());
++	}
++
++      return GDK_FILTER_REMOVE;
++
++    case WM_SETTINGCHANGE:
++      /* catch cursor blink, etc... changes */
++      msw_style_setup_system_settings ();
++      return GDK_FILTER_REMOVE;
++
++    default:
++      return GDK_FILTER_CONTINUE;
++     }
++}
++
+ static gboolean
+ gtk_theme_engine_load (GTypeModule *module)
+ {
++  if (strcmp(module->name,"wimp") == 0)
++  {
++  msw_rc_style_register_type (module);
++  msw_style_register_type (module);
++  msw_style_init ();
++  hidden_msg_window = create_hidden_msg_window ();
++  gdk_window_add_filter (hidden_msg_window, global_filter_func, NULL);
++
++  return TRUE;
++  }
++  else
++  {
+   GtkThemeEngine *engine = GTK_THEME_ENGINE (module);
+   
+   gchar *engine_path;
+@@ -104,16 +186,33 @@ gtk_theme_engine_load (GTypeModule *modu
+   engine->init (module);
+ 
+   return TRUE;
++  }
+ }
+ 
++const gchar *
++g_module_check_init (GModule *module)
++{
++  return gtk_check_version (2, 0, 0);
++}
++
++
+ static void
+ gtk_theme_engine_unload (GTypeModule *module)
+ {
+   GtkThemeEngine *engine = GTK_THEME_ENGINE (module);
+ 
++  if (strcmp(module->name,"wimp") == 0)
++  {
++  gdk_window_remove_filter (hidden_msg_window, global_filter_func, NULL);
++  gdk_window_destroy (hidden_msg_window);
++  hidden_msg_window = NULL;
++  msw_style_finalize ();
++  }
++  else
++  {
+   engine->exit();
+-
+   g_module_close (engine->library);
++  }
+   engine->library = NULL;
+ 
+   engine->init = NULL;
+@@ -189,7 +288,10 @@ gtk_theme_engine_create_rc_style (GtkThe
+ {
+   g_return_val_if_fail (engine != NULL, NULL);
+ 
+-  return engine->create_rc_style ();
++  if (strcmp(engine->name,"wimp") == 0)
++    return g_object_new (MSW_TYPE_RC_STYLE, NULL);
++  else
++    return engine->create_rc_style ();
+ }
+ 
+ #define __GTK_THEMES_C__
+
+--- a/gtk/Makefile.in	2014-10-10 17:46:43.000000000 +0200
++++ b/gtk/Makefile.in	2015-04-21 09:22:39.773183264 +0100
+@@ -330,7 +330,7 @@ am__objects_2 = gtkquery.lo gtksearcheng
+ 	gtkcurve.lo gtkfilesel.lo gtkgamma.lo gtkitemfactory.lo \
+ 	gtklist.lo gtklistitem.lo gtkoldeditable.lo gtkoptionmenu.lo \
+ 	gtkpixmap.lo gtkpreview.lo gtkprogress.lo gtksignal.lo \
+-	gtktipsquery.lo gtktooltips.lo
++	gtktipsquery.lo gtktooltips.lo msw_rc_style.lo msw_style.lo xp_theme.lo
+ am__objects_3 = gtkcustompaperunixdialog.lo gtkpagesetupunixdialog.lo \
+ 	gtkprinter.lo gtkprinteroption.lo gtkprinteroptionset.lo \
+ 	gtkprinteroptionwidget.lo gtkprintjob.lo \
+@@ -1525,7 +1525,6 @@ INCLUDES = \
+ 	-I$(top_builddir)/gtk				\
+ 	-I$(top_srcdir) -I../gdk			\
+ 	-I$(top_srcdir)/gdk				\
+-	-DGTK_DISABLE_DEPRECATED			\
+ 	-DGTK_FILE_SYSTEM_ENABLE_UNSUPPORTED		\
+ 	-DGTK_PRINT_BACKEND_ENABLE_UNSUPPORTED		\
+ 	$(GMODULE_CFLAGS)				\
+--- a/gtk/msw_rc_style.c	1970-01-01 01:00:00.000000000 +0100
++++ b/gtk/msw_rc_style.c	2015-04-21 09:32:12.366529198 +0100
+@@ -0,0 +1,76 @@
++/* MS-Windows Engine (aka GTK-Wimp)
++ *
++ * Copyright (C) 2003, 2004 Raymond Penners <raymond@dotsphinx.com>
++ * Includes code adapted from redmond95 by Owen Taylor, and
++ * gtk-nativewin by Evan Martin
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Library General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ * License along with this library; if not, write to the
++ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ * Boston, MA 02111-1307, USA.
++ */
++
++#include "msw_style.h"
++#include "msw_rc_style.h"
++
++static void msw_rc_style_init (MswRcStyle * style);
++static void msw_rc_style_class_init (MswRcStyleClass * klass);
++static GtkStyle *msw_rc_style_create_style (GtkRcStyle * rc_style);
++
++static GtkRcStyleClass *parent_class;
++
++GType msw_type_rc_style = 0;
++
++void
++msw_rc_style_register_type (GTypeModule *module)
++{
++  const GTypeInfo object_info = {
++    sizeof (MswRcStyleClass),
++    (GBaseInitFunc) NULL,
++    (GBaseFinalizeFunc) NULL,
++    (GClassInitFunc) msw_rc_style_class_init,
++    NULL,			/* class_finalize */
++    NULL,			/* class_data */
++    sizeof (MswRcStyle),
++    0,				/* n_preallocs */
++    (GInstanceInitFunc) msw_rc_style_init,
++  };
++
++  msw_type_rc_style = g_type_module_register_type (module,
++						   GTK_TYPE_RC_STYLE,
++						   "MswRcStyle",
++						   &object_info, 0);
++}
++
++static void
++msw_rc_style_init (MswRcStyle *style)
++{
++}
++
++static void
++msw_rc_style_class_init (MswRcStyleClass *klass)
++{
++  GtkRcStyleClass *rc_style_class = GTK_RC_STYLE_CLASS (klass);
++
++  parent_class = g_type_class_peek_parent (klass);
++
++  rc_style_class->create_style = msw_rc_style_create_style;
++}
++
++/* Create an empty style suitable to this RC style
++ */
++static GtkStyle *
++msw_rc_style_create_style (GtkRcStyle *rc_style)
++{
++  return g_object_new (MSW_TYPE_STYLE, NULL);
++}
+
+--- a/gtk/msw_rc_style.h	1970-01-01 01:00:00.000000000 +0100
++++ b/gtk/msw_rc_style.h	2015-04-21 09:32:12.366529198 +0100
+@@ -0,0 +1,54 @@
++/* MS-Windows Engine (aka GTK-Wimp)
++ *
++ * Copyright (C) 2003, 2004 Raymond Penners <raymond@dotsphinx.com>
++ * Includes code adapted from redmond95 by Owen Taylor, and
++ * gtk-nativewin by Evan Martin
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Library General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ * License along with this library; if not, write to the
++ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ * Boston, MA 02111-1307, USA.
++ */
++
++#ifndef MSW_RC_STYLE_H
++#define MSW_RC_STYLE_H
++
++#include "gtk/gtk.h"
++
++typedef struct _MswRcStyle MswRcStyle;
++typedef struct _MswRcStyleClass MswRcStyleClass;
++
++extern GType msw_type_rc_style;
++
++#define MSW_TYPE_RC_STYLE              msw_type_rc_style
++#define MSW_RC_STYLE(object)           (G_TYPE_CHECK_INSTANCE_CAST ((object), MSW_TYPE_RC_STYLE, MswRcStyle))
++#define MSW_RC_STYLE_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), MSW_TYPE_RC_STYLE, MswRcStyleClass))
++#define MSW_IS_RC_STYLE(object)        (G_TYPE_CHECK_INSTANCE_TYPE ((object), MSW_TYPE_RC_STYLE))
++#define MSW_IS_RC_STYLE_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), MSW_TYPE_RC_STYLE))
++#define MSW_RC_STYLE_GET_CLASS(obj)    (G_TYPE_INSTANCE_GET_CLASS ((obj), MSW_TYPE_RC_STYLE, MswRcStyleClass))
++
++struct _MswRcStyle
++{
++  GtkRcStyle parent_instance;
++  
++  GList *img_list;
++};
++
++struct _MswRcStyleClass
++{
++  GtkRcStyleClass parent_class;
++};
++
++void msw_rc_style_register_type (GTypeModule *module);
++
++#endif /* MSW_TYPE_RC_STYLE */
+
+--- a/gtk/msw_style.c	1970-01-01 01:00:00.000000000 +0100
++++ b/gtk/msw_style.c	2015-04-21 09:32:12.366529198 +0100
+@@ -0,0 +1,3507 @@
++/* MS-Windows Engine (aka GTK-Wimp)
++ *
++ * Copyright (C) 2003, 2004 Raymond Penners <raymond@dotsphinx.com>
++ * Copyright (C) 2006 Hong Jen Yee (PCMan) <pcman.tw@gmail.com>
++ * Includes code adapted from redmond95 by Owen Taylor, and
++ * gtk-nativewin by Evan Martin
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Library General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ * License along with this library; if not, write to the
++ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ * Boston, MA 02111-1307, USA.
++ */
++
++/*
++ * Useful resources:
++ *
++ *  http://lxr.mozilla.org/seamonkey/source/widget/src/windows/nsNativeThemeWin.cpp
++ *  http://lxr.mozilla.org/seamonkey/source/widget/src/windows/nsLookAndFeel.cpp
++ *  http://msdn.microsoft.com/library/default.asp?url=/library/en-us/shellcc/platform/commctls/userex/functions/drawthemebackground.asp
++ *  http://msdn.microsoft.com/library/default.asp?url=/library/en-us/gdi/pantdraw_4b3g.asp
++ */
++
++/* Include first, else we get redefinition warnings about STRICT */
++#include "pango/pangowin32.h"
++
++#include "msw_style.h"
++#include "xp_theme.h"
++
++#include <windows.h>
++#include <math.h>
++#include <string.h>
++#include <stdio.h>
++
++#include "gdk/gdk.h"
++#include "gtk/gtk.h"
++
++#ifdef BUILDING_STANDALONE
++#include "gdk/gdkwin32.h"
++#else
++#include "gdk/win32/gdkwin32.h"
++#endif
++
++
++#define DETAIL(xx)   ((detail) && (!strcmp(xx, detail)))
++
++
++/* Default values, not normally used
++ */
++static const GtkRequisition default_option_indicator_size = { 9, 8 };
++static const GtkBorder default_option_indicator_spacing = { 7, 5, 2, 2 };
++
++static GtkStyleClass *parent_class;
++static HBRUSH g_dither_brush = NULL;
++
++static HPEN g_light_pen = NULL;
++static HPEN g_dark_pen = NULL;
++
++typedef enum
++{
++  CHECK_AA,
++  CHECK_BASE,
++  CHECK_BLACK,
++  CHECK_DARK,
++  CHECK_LIGHT,
++  CHECK_MID,
++  CHECK_TEXT,
++  CHECK_INCONSISTENT,
++  RADIO_BASE,
++  RADIO_BLACK,
++  RADIO_DARK,
++  RADIO_LIGHT,
++  RADIO_MID,
++  RADIO_TEXT
++} Part;
++
++#define PART_SIZE 13
++
++static const unsigned char check_aa_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char check_base_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0xfc, 0x07, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0xfc, 0x07, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0xfc, 0x07, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0xfc, 0x07, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char check_black_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0xfe, 0x0f, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char check_dark_bits[] = {
++  0xff, 0x1f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00
++};
++static const unsigned char check_light_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0xfe, 0x1f, 0x00, 0x00
++};
++static const unsigned char check_mid_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0xfc, 0x0f, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char check_text_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
++  0x00, 0x03, 0x00, 0x00, 0x88, 0x03, 0x00, 0x00,
++  0xd8, 0x01, 0x00, 0x00, 0xf8, 0x00, 0x00, 0x00,
++  0x70, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char check_inconsistent_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0xf0, 0x03, 0x00, 0x00, 0xf0, 0x03, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char radio_base_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0xf0, 0x01, 0x00, 0x00, 0xf8, 0x03, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0xfc, 0x07, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0xfc, 0x07, 0x00, 0x00,
++  0xfc, 0x07, 0x00, 0x00, 0xf8, 0x03, 0x00, 0x00,
++  0xf0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char radio_black_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0xf0, 0x01, 0x00, 0x00,
++  0x0c, 0x02, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char radio_dark_bits[] = {
++  0xf0, 0x01, 0x00, 0x00, 0x0c, 0x06, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char radio_light_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
++  0x00, 0x10, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x0c, 0x06, 0x00, 0x00,
++  0xf0, 0x01, 0x00, 0x00
++};
++static const unsigned char radio_mid_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
++  0x00, 0x08, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
++  0x0c, 0x06, 0x00, 0x00, 0xf0, 0x01, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++static const unsigned char radio_text_bits[] = {
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0xe0, 0x00, 0x00, 0x00, 0xf0, 0x01, 0x00, 0x00,
++  0xf0, 0x01, 0x00, 0x00, 0xf0, 0x01, 0x00, 0x00,
++  0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00
++};
++
++static struct
++{
++  const unsigned char *bits;
++  cairo_surface_t *bmap;
++} parts[] = {
++  { check_aa_bits, NULL           },
++  { check_base_bits, NULL         },
++  { check_black_bits, NULL        },
++  { check_dark_bits, NULL         },
++  { check_light_bits, NULL        },
++  { check_mid_bits, NULL          },
++  { check_text_bits, NULL         },
++  { check_inconsistent_bits, NULL },
++  { radio_base_bits, NULL         },
++  { radio_black_bits, NULL        },
++  { radio_dark_bits, NULL         },
++  { radio_light_bits, NULL        },
++  { radio_mid_bits, NULL          },
++  { radio_text_bits, NULL         }
++};
++
++static void
++_cairo_draw_line (cairo_t  *cr,
++                  GdkColor *color,
++                  gint      x1,
++                  gint      y1,
++                  gint      x2,
++                  gint      y2)
++{
++  cairo_save (cr);
++
++  gdk_cairo_set_source_color (cr, color);
++  cairo_set_line_cap (cr, CAIRO_LINE_CAP_SQUARE);
++  cairo_set_line_width (cr, 1.0);
++
++  cairo_move_to (cr, x1 + 0.5, y1 + 0.5);
++  cairo_line_to (cr, x2 + 0.5, y2 + 0.5);
++  cairo_stroke (cr);
++
++  cairo_restore (cr);
++}
++
++static void
++_cairo_draw_rectangle (cairo_t *cr,
++                       GdkColor *color,
++                       gboolean filled,
++                       gint x,
++                       gint y,
++                       gint width,
++                       gint height)
++{
++  gdk_cairo_set_source_color (cr, color);
++
++  if (filled)
++    {
++      cairo_rectangle (cr, x, y, width, height);
++      cairo_fill (cr);
++    }
++  else
++    {
++      cairo_rectangle (cr, x + 0.5, y + 0.5, width, height);
++      cairo_stroke (cr);
++    }
++}
++
++static gboolean
++get_system_font (XpThemeClass klazz, XpThemeFont type, LOGFONTW *out_lf)
++{
++  if (xp_theme_get_system_font (klazz, type, out_lf))
++    {
++      return TRUE;
++    }
++  else
++    {
++      /* Use wide char versions here, as the theming functions only support
++       * wide chars versions of the structures. */
++      NONCLIENTMETRICSW ncm;
++
++      ncm.cbSize = sizeof (NONCLIENTMETRICSW);
++
++      if (SystemParametersInfoW (SPI_GETNONCLIENTMETRICS,
++				sizeof (NONCLIENTMETRICSW), &ncm, 0))
++	{
++	  if (type == XP_THEME_FONT_CAPTION)
++	    *out_lf = ncm.lfCaptionFont;
++	  else if (type == XP_THEME_FONT_MENU)
++	    *out_lf = ncm.lfMenuFont;
++	  else if (type == XP_THEME_FONT_STATUS)
++	    *out_lf = ncm.lfStatusFont;
++	  else
++	    *out_lf = ncm.lfMessageFont;
++
++	  return TRUE;
++	}
++    }
++
++  return FALSE;
++}
++
++static char *
++sys_font_to_pango_font (XpThemeClass klazz, XpThemeFont type, char *buf,
++			size_t bufsiz)
++{
++  LOGFONTW lf;
++
++  if (get_system_font (klazz, type, &lf))
++    {
++      PangoFontDescription *desc = NULL;
++      int pt_size;
++      const char *font;
++
++      desc = pango_win32_font_description_from_logfontw (&lf);
++      if (!desc)
++	return NULL;
++
++      font = pango_font_description_to_string (desc);
++      pt_size = pango_font_description_get_size (desc);
++
++      if (!(font && *font))
++	{
++	  pango_font_description_free (desc);
++	  return NULL;
++	}
++
++      if (pt_size == 0)
++	{
++	  HDC hDC;
++	  HWND hwnd;
++
++	  hwnd = GetDesktopWindow ();
++	  hDC = GetDC (hwnd);
++
++	  if (hDC)
++	    pt_size = -MulDiv (lf.lfHeight, 72, GetDeviceCaps (hDC, LOGPIXELSY));
++	  else
++	    pt_size = 10;
++
++	  if (hDC)
++	    ReleaseDC (hwnd, hDC);
++
++	  g_snprintf (buf, bufsiz, "%s %d", font, pt_size);
++	}
++      else
++	{
++	  g_snprintf (buf, bufsiz, "%s", font);
++	}
++
++      if (desc)
++	pango_font_description_free (desc);
++
++      return buf;
++    }
++
++  return NULL;
++}
++
++/* missing from ms's header files */
++#ifndef SPI_GETMENUSHOWDELAY
++#define SPI_GETMENUSHOWDELAY 106
++#endif
++
++/* I don't know the proper XP theme class for things like
++   HIGHLIGHTTEXT, so we'll just define it to be "BUTTON"
++   for now */
++#define XP_THEME_CLASS_TEXT XP_THEME_CLASS_BUTTON
++
++#define WIN95_VERSION   0x400
++#define WIN2K_VERSION   0x500
++#define WINXP_VERSION   0x501
++#define WIN2K3_VERSION  0x502
++#define VISTA_VERSION   0x600
++
++static gint32
++get_windows_version ()
++{
++  static gint32 version = 0;
++  static gboolean have_version = FALSE;
++
++  if (!have_version)
++    {
++      OSVERSIONINFOEX osvi;
++      have_version = TRUE;
++
++      ZeroMemory (&osvi, sizeof (OSVERSIONINFOEX));
++      osvi.dwOSVersionInfoSize = sizeof (OSVERSIONINFOEX);
++
++      GetVersionEx((OSVERSIONINFO*) &osvi);
++
++      version = (osvi.dwMajorVersion & 0xff) << 8 | (osvi.dwMinorVersion & 0xff);
++    }
++
++  return version;
++}
++
++static void
++setup_menu_settings (GtkSettings *settings)
++{
++  int menu_delay;
++  GObjectClass *klazz = G_OBJECT_GET_CLASS (G_OBJECT (settings));
++
++  if (get_windows_version () > WIN95_VERSION)
++    {
++      if (SystemParametersInfo (SPI_GETMENUSHOWDELAY, 0, &menu_delay, 0))
++	{
++	  if (klazz)
++	    {
++	      if (g_object_class_find_property
++		  (klazz, "gtk-menu-bar-popup-delay"))
++		{
++		  g_object_set (settings,
++				"gtk-menu-bar-popup-delay", 0, NULL);
++		}
++	      if (g_object_class_find_property
++		  (klazz, "gtk-menu-popup-delay"))
++		{
++		  g_object_set (settings,
++				"gtk-menu-popup-delay", menu_delay, NULL);
++		}
++	      if (g_object_class_find_property
++		  (klazz, "gtk-menu-popdown-delay"))
++		{
++		  g_object_set (settings,
++				"gtk-menu-popdown-delay", menu_delay, NULL);
++		}
++	    }
++	}
++    }
++}
++
++void
++msw_style_setup_system_settings (void)
++{
++  GtkSettings *settings;
++  int cursor_blink_time;
++
++  settings = gtk_settings_get_default ();
++  if (!settings)
++    return;
++
++  cursor_blink_time = GetCaretBlinkTime ();
++  g_object_set (settings, "gtk-cursor-blink", cursor_blink_time > 0, NULL);
++
++  if (cursor_blink_time > 0)
++    {
++      g_object_set (settings, "gtk-cursor-blink-time",
++		    2 * cursor_blink_time, NULL);
++    }
++
++  g_object_set (settings, "gtk-double-click-distance",
++		GetSystemMetrics (SM_CXDOUBLECLK), NULL);
++  g_object_set (settings, "gtk-double-click-time", GetDoubleClickTime (),
++		NULL);
++  g_object_set (settings, "gtk-dnd-drag-threshold",
++		GetSystemMetrics (SM_CXDRAG), NULL);
++
++  setup_menu_settings (settings);
++
++  /*
++     http://developer.gnome.org/doc/API/2.0/gtk/GtkSettings.html
++     http://msdn.microsoft.com/library/default.asp?url=/library/en-us/sysinfo/base/systemparametersinfo.asp
++     http://msdn.microsoft.com/library/default.asp?url=/library/en-us/sysinfo/base/getsystemmetrics.asp */
++}
++
++static void
++setup_system_font (GtkStyle *style)
++{
++  char buf[256], *font;		/* It's okay, lfFaceName is smaller than 32
++				   chars */
++
++  if ((font = sys_font_to_pango_font (XP_THEME_CLASS_TEXT,
++				      XP_THEME_FONT_MESSAGE,
++				      buf, sizeof (buf))) != NULL)
++    {
++      if (style->font_desc)
++	{
++	  pango_font_description_free (style->font_desc);
++	}
++
++      style->font_desc = pango_font_description_from_string (font);
++    }
++}
++
++static void
++sys_color_to_gtk_color (XpThemeClass klazz, int id, GdkColor * pcolor)
++{
++  DWORD color;
++
++  if (!xp_theme_get_system_color (klazz, id, &color))
++    color = GetSysColor (id);
++
++  pcolor->pixel = color;
++  pcolor->red = (GetRValue (color) << 8) | GetRValue (color);
++  pcolor->green = (GetGValue (color) << 8) | GetGValue (color);
++  pcolor->blue = (GetBValue (color) << 8) | GetBValue (color);
++}
++
++static int
++get_system_metric (XpThemeClass klazz, int id)
++{
++  int rval;
++
++  if (!xp_theme_get_system_metric (klazz, id, &rval))
++    rval = GetSystemMetrics (id);
++
++  return rval;
++}
++
++static void
++setup_msw_rc_style (void)
++{
++  char buf[1024], font_buf[256], *font_ptr;
++  char menu_bar_prelight_str[128];
++
++  GdkColor menu_color;
++  GdkColor menu_text_color;
++  GdkColor tooltip_back;
++  GdkColor tooltip_fore;
++  GdkColor btn_fore;
++  GdkColor btn_face;
++  GdkColor progress_back;
++
++  GdkColor fg_prelight;
++  GdkColor bg_prelight;
++  GdkColor base_prelight;
++  GdkColor text_prelight;
++
++  /* Prelight */
++  sys_color_to_gtk_color (get_windows_version () >= VISTA_VERSION ? XP_THEME_CLASS_MENU : XP_THEME_CLASS_TEXT,
++			  get_windows_version () >= VISTA_VERSION ? COLOR_MENUTEXT : COLOR_HIGHLIGHTTEXT,
++			  &fg_prelight);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_HIGHLIGHT, &bg_prelight);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_HIGHLIGHT,
++			  &base_prelight);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_HIGHLIGHTTEXT,
++			  &text_prelight);
++
++  sys_color_to_gtk_color (XP_THEME_CLASS_MENU, COLOR_MENUTEXT,
++			  &menu_text_color);
++  sys_color_to_gtk_color (XP_THEME_CLASS_MENU, COLOR_MENU, &menu_color);
++
++  /* tooltips */
++  sys_color_to_gtk_color (XP_THEME_CLASS_TOOLTIP, COLOR_INFOTEXT,
++			  &tooltip_fore);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TOOLTIP, COLOR_INFOBK,
++			  &tooltip_back);
++
++  /* text on push buttons. TODO: button shadows, backgrounds, and
++     highlights */
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNTEXT, &btn_fore);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNFACE, &btn_face);
++
++  /* progress bar background color */
++  sys_color_to_gtk_color (XP_THEME_CLASS_PROGRESS, COLOR_HIGHLIGHT,
++			  &progress_back);
++
++  /* Enable coloring for menus. */
++  font_ptr =
++    sys_font_to_pango_font (XP_THEME_CLASS_MENU, XP_THEME_FONT_MENU,
++			    font_buf, sizeof (font_buf));
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-menu\" = \"msw-default\"\n" "{\n"
++	      "GtkMenuItem::toggle-spacing = 8\n"
++	      "fg[PRELIGHT] = { %d, %d, %d }\n"
++	      "bg[PRELIGHT] = { %d, %d, %d }\n"
++	      "text[PRELIGHT] = { %d, %d, %d }\n"
++	      "base[PRELIGHT] = { %d, %d, %d }\n"
++	      "fg[NORMAL] = { %d, %d, %d }\n"
++	      "bg[NORMAL] = { %d, %d, %d }\n" "%s = \"%s\"\n"
++	      "}widget_class \"*MenuItem*\" style \"msw-menu\"\n"
++	      "widget_class \"*GtkMenu\" style \"msw-menu\"\n"
++	      "widget_class \"*GtkMenuShell*\" style \"msw-menu\"\n",
++	      fg_prelight.red, fg_prelight.green, fg_prelight.blue,
++	      bg_prelight.red, bg_prelight.green, bg_prelight.blue,
++	      text_prelight.red, text_prelight.green, text_prelight.blue,
++	      base_prelight.red, base_prelight.green, base_prelight.blue,
++	      menu_text_color.red, menu_text_color.green,
++	      menu_text_color.blue, menu_color.red, menu_color.green,
++	      menu_color.blue, (font_ptr ? "font_name" : "#"),
++	      (font_ptr ? font_ptr : " font name should go here"));
++  gtk_rc_parse_string (buf);
++
++  if (xp_theme_is_active ())
++    {
++      *menu_bar_prelight_str = '\0';
++    }
++  else
++    {
++      g_snprintf (menu_bar_prelight_str, sizeof (menu_bar_prelight_str),
++		  "fg[PRELIGHT] = { %d, %d, %d }\n",
++		  menu_text_color.red, menu_text_color.green,
++		  menu_text_color.blue);
++    }
++
++  /* Enable coloring for menu bars. */
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-menu-bar\" = \"msw-menu\"\n"
++	      "{\n"
++	      "bg[NORMAL] = { %d, %d, %d }\n"
++	      "%s" "GtkMenuBar::shadow-type = %d\n"
++	      /*
++	         FIXME: This should be enabled once gtk+ support
++	         GtkMenuBar::prelight-item style property.
++	       */
++	      /* "GtkMenuBar::prelight-item = 1\n" */
++	      "}widget_class \"*MenuBar*\" style \"msw-menu-bar\"\n",
++	      btn_face.red, btn_face.green, btn_face.blue,
++	      menu_bar_prelight_str, xp_theme_is_active ()? 0 : 2);
++  gtk_rc_parse_string (buf);
++
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-toolbar\" = \"msw-default\"\n"
++	      "{\n"
++	      "GtkHandleBox::shadow-type = %s\n"
++	      "GtkToolbar::shadow-type = %s\n"
++	      "}widget_class \"*HandleBox*\" style \"msw-toolbar\"\n",
++	      "etched-in", "etched-in");
++  gtk_rc_parse_string (buf);
++
++  /* enable tooltip fonts */
++  font_ptr = sys_font_to_pango_font (XP_THEME_CLASS_STATUS, XP_THEME_FONT_STATUS,
++				     font_buf, sizeof (font_buf));
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-tooltips-caption\" = \"msw-default\"\n"
++	      "{fg[NORMAL] = { %d, %d, %d }\n" "%s = \"%s\"\n"
++	      "}widget \"gtk-tooltips.GtkLabel\" style \"msw-tooltips-caption\"\n"
++	      "widget \"gtk-tooltip.GtkLabel\" style \"msw-tooltips-caption\"\n",
++	      tooltip_fore.red, tooltip_fore.green, tooltip_fore.blue,
++	      (font_ptr ? "font_name" : "#"),
++	      (font_ptr ? font_ptr : " font name should go here"));
++  gtk_rc_parse_string (buf);
++
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-tooltips\" = \"msw-default\"\n"
++	      "{bg[NORMAL] = { %d, %d, %d }\n"
++	      "}widget \"gtk-tooltips*\" style \"msw-tooltips\"\n"
++	      "widget \"gtk-tooltip*\" style \"msw-tooltips\"\n",
++	      tooltip_back.red, tooltip_back.green, tooltip_back.blue);
++  gtk_rc_parse_string (buf);
++
++  /* enable font theming for status bars */
++  font_ptr = sys_font_to_pango_font (XP_THEME_CLASS_STATUS, XP_THEME_FONT_STATUS,
++				     font_buf, sizeof (font_buf));
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-status\" = \"msw-default\"\n" "{%s = \"%s\"\n"
++	      "bg[NORMAL] = { %d, %d, %d }\n"
++	      "}widget_class \"*Status*\" style \"msw-status\"\n",
++	      (font_ptr ? "font_name" : "#"),
++	      (font_ptr ? font_ptr : " font name should go here"),
++	      btn_face.red, btn_face.green, btn_face.blue);
++  gtk_rc_parse_string (buf);
++
++  /* enable coloring for text on buttons
++   * TODO: use GetThemeMetric for the border and outside border */
++  g_snprintf (buf, sizeof (buf),
++              "style \"msw-button\" = \"msw-default\"\n"
++              "{\n"
++              "bg[NORMAL] = { %d, %d, %d }\n"
++              "bg[PRELIGHT] = { %d, %d, %d }\n"
++              "bg[INSENSITIVE] = { %d, %d, %d }\n"
++              "fg[PRELIGHT] = { %d, %d, %d }\n"
++              "GtkButton::default-border = { 0, 0, 0, 0 }\n"
++              "GtkButton::default-outside-border = { 0, 0, 0, 0 }\n"
++              "GtkButton::child-displacement-x = %d\n"
++              "GtkButton::child-displacement-y = %d\n"
++              "GtkWidget::focus-padding = %d\n"
++              "}widget_class \"*Button*\" style \"msw-button\"\n",
++              btn_face.red, btn_face.green, btn_face.blue,
++              btn_face.red, btn_face.green, btn_face.blue,
++              btn_face.red, btn_face.green, btn_face.blue,
++              btn_fore.red, btn_fore.green, btn_fore.blue,
++              xp_theme_is_active ()? 0 : 1,
++              xp_theme_is_active ()? 0 : 1,
++              xp_theme_is_active ()? 1 : 2);
++  gtk_rc_parse_string (buf);
++
++  /* enable coloring for progress bars */
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-progress\" = \"msw-default\"\n"
++	      "{bg[PRELIGHT] = { %d, %d, %d }\n"
++	      "bg[NORMAL] = { %d, %d, %d }\n"
++	      "}widget_class \"*Progress*\" style \"msw-progress\"\n",
++	      progress_back.red,
++	      progress_back.green,
++	      progress_back.blue,
++	      btn_face.red, btn_face.green, btn_face.blue);
++  gtk_rc_parse_string (buf);
++
++  /* scrollbar thumb width and height */
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-vscrollbar\" = \"msw-default\"\n"
++	      "{GtkRange::slider-width = %d\n"
++	      "GtkRange::stepper-size = %d\n"
++	      "GtkRange::stepper-spacing = 0\n"
++	      "GtkRange::trough_border = 0\n"
++	      "GtkScale::slider-length = %d\n"
++	      "GtkScrollbar::min-slider-length = 8\n"
++	      "}widget_class \"*VScrollbar*\" style \"msw-vscrollbar\"\n"
++	      "widget_class \"*VScale*\" style \"msw-vscrollbar\"\n",
++	      GetSystemMetrics (SM_CYVTHUMB),
++	      get_system_metric (XP_THEME_CLASS_SCROLLBAR, SM_CXVSCROLL), 11);
++  gtk_rc_parse_string (buf);
++
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-hscrollbar\" = \"msw-default\"\n"
++	      "{GtkRange::slider-width = %d\n"
++	      "GtkRange::stepper-size = %d\n"
++	      "GtkRange::stepper-spacing = 0\n"
++	      "GtkRange::trough_border = 0\n"
++	      "GtkScale::slider-length = %d\n"
++	      "GtkScrollbar::min-slider-length = 8\n"
++	      "}widget_class \"*HScrollbar*\" style \"msw-hscrollbar\"\n"
++	      "widget_class \"*HScale*\" style \"msw-hscrollbar\"\n",
++	      GetSystemMetrics (SM_CXHTHUMB),
++	      get_system_metric (XP_THEME_CLASS_SCROLLBAR, SM_CYHSCROLL), 11);
++  gtk_rc_parse_string (buf);
++
++  gtk_rc_parse_string ("style \"msw-scrolled-window\" = \"msw-default\"\n"
++		       "{GtkScrolledWindow::scrollbars-within-bevel = 1}\n"
++		       "class \"GtkScrolledWindow\" style \"msw-scrolled-window\"\n");
++
++  /* radio/check button sizes */
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-checkbutton\" = \"msw-button\"\n"
++	      "{GtkCheckButton::indicator-size = 13\n"
++	      "}widget_class \"*CheckButton*\" style \"msw-checkbutton\"\n"
++	      "widget_class \"*RadioButton*\" style \"msw-checkbutton\"\n");
++  gtk_rc_parse_string (buf);
++
++  /* size of combo box toggle button */
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-combobox-button\" = \"msw-default\"\n"
++	      "{\n"
++	      "xthickness = 0\n"
++	      "ythickness = 0\n"
++	      "GtkButton::default-border = { 0, 0, 0, 0 }\n"
++	      "GtkButton::default-outside-border = { 0, 0, 0, 0 }\n"
++	      "GtkButton::child-displacement-x = 0\n"
++	      "GtkButton::child-displacement-y = 0\n"
++	      "GtkWidget::focus-padding = 0\n"
++	      "GtkWidget::focus-line-width = 0\n"
++	      "}\n"
++	      "widget_class \"*ComboBox*ToggleButton*\" style \"msw-combobox-button\"\n");
++  gtk_rc_parse_string (buf);
++
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-combobox\" = \"msw-default\"\n"
++	      "{\n"
++	      "GtkComboBox::shadow-type = in\n"
++	      "xthickness = %d\n"
++	      "ythickness = %d\n"
++	      "}\n"
++	      "class \"GtkComboBox\" style \"msw-combobox\"\n",
++        xp_theme_is_active()? 1 : GetSystemMetrics (SM_CXEDGE),
++        xp_theme_is_active()? 1 : GetSystemMetrics (SM_CYEDGE));
++  gtk_rc_parse_string (buf);
++
++  /* size of tree view header */
++  g_snprintf (buf, sizeof (buf),
++	      "style \"msw-header-button\" = \"msw-default\"\n"
++	      "{\n"
++	      "xthickness = 0\n"
++	      "ythickness = 0\n"
++	      "GtkWidget::draw-border = {0, 0, 0, 0}\n"
++        "GtkButton::default-border = { 0, 0, 0, 0 }\n"
++	      "GtkButton::default-outside-border = { 0, 0, 0, 0 }\n"
++	      "GtkButton::child-displacement-x = 0\n"
++	      "GtkButton::child-displacement-y = 0\n"
++	      "GtkWidget::focus-padding = 0\n"
++	      "GtkWidget::focus-line-width = 0\n"
++	      "}\n"
++	      "widget_class \"*TreeView*Button*\" style \"msw-header-button\"\n");
++  gtk_rc_parse_string (buf);
++
++  /* FIXME: This should be enabled once gtk+ support GtkNotebok::prelight-tab */
++  /* enable prelight tab of GtkNotebook */
++  /*
++     g_snprintf (buf, sizeof (buf),
++     "style \"msw-notebook\" = \"msw-default\"\n"
++     "{GtkNotebook::prelight-tab=1\n"
++     "}widget_class \"*Notebook*\" style \"msw-notebook\"\n");
++     gtk_rc_parse_string (buf);
++   */
++
++  /* FIXME: This should be enabled once gtk+ support GtkTreeView::full-row-focus */
++  /*
++     g_snprintf (buf, sizeof (buf),
++     "style \"msw-treeview\" = \"msw-default\"\n"
++     "{GtkTreeView::full-row-focus=0\n"
++     "}widget_class \"*TreeView*\" style \"msw-treeview\"\n");
++     gtk_rc_parse_string (buf);
++   */
++}
++
++static void
++setup_system_styles (GtkStyle *style)
++{
++  int i;
++
++  /* Default background */
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNFACE,
++			  &style->bg[GTK_STATE_NORMAL]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_HIGHLIGHT,
++			  &style->bg[GTK_STATE_SELECTED]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNFACE,
++			  &style->bg[GTK_STATE_INSENSITIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNFACE,
++			  &style->bg[GTK_STATE_ACTIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNFACE,
++			  &style->bg[GTK_STATE_PRELIGHT]);
++
++  /* Default base */
++  sys_color_to_gtk_color (XP_THEME_CLASS_WINDOW, COLOR_WINDOW,
++			  &style->base[GTK_STATE_NORMAL]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_HIGHLIGHT,
++			  &style->base[GTK_STATE_SELECTED]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNFACE,
++			  &style->base[GTK_STATE_INSENSITIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNFACE,
++			  &style->base[GTK_STATE_ACTIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_WINDOW, COLOR_WINDOW,
++			  &style->base[GTK_STATE_PRELIGHT]);
++
++  /* Default text */
++  sys_color_to_gtk_color (XP_THEME_CLASS_WINDOW, COLOR_WINDOWTEXT,
++			  &style->text[GTK_STATE_NORMAL]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_HIGHLIGHTTEXT,
++			  &style->text[GTK_STATE_SELECTED]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_GRAYTEXT,
++			  &style->text[GTK_STATE_INSENSITIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNTEXT,
++			  &style->text[GTK_STATE_ACTIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_WINDOW, COLOR_WINDOWTEXT,
++			  &style->text[GTK_STATE_PRELIGHT]);
++
++  /* Default foreground */
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNTEXT,
++			  &style->fg[GTK_STATE_NORMAL]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_HIGHLIGHTTEXT,
++			  &style->fg[GTK_STATE_SELECTED]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_TEXT, COLOR_GRAYTEXT,
++			  &style->fg[GTK_STATE_INSENSITIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_BTNTEXT,
++                          &style->fg[GTK_STATE_ACTIVE]);
++  sys_color_to_gtk_color (XP_THEME_CLASS_WINDOW, COLOR_WINDOWTEXT,
++			  &style->fg[GTK_STATE_PRELIGHT]);
++
++  for (i = 0; i < 5; i++)
++    {
++      sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_3DSHADOW,
++			      &style->dark[i]);
++      sys_color_to_gtk_color (XP_THEME_CLASS_BUTTON, COLOR_3DHILIGHT,
++			      &style->light[i]);
++
++      style->mid[i].red = (style->light[i].red + style->dark[i].red) / 2;
++      style->mid[i].green =
++	(style->light[i].green + style->dark[i].green) / 2;
++      style->mid[i].blue = (style->light[i].blue + style->dark[i].blue) / 2;
++
++      style->text_aa[i].red = (style->text[i].red + style->base[i].red) / 2;
++      style->text_aa[i].green =
++	(style->text[i].green + style->base[i].green) / 2;
++      style->text_aa[i].blue =
++	(style->text[i].blue + style->base[i].blue) / 2;
++    }
++}
++
++static gboolean
++sanitize_size (GdkWindow *window, gint *width, gint *height)
++{
++  gboolean set_bg = FALSE;
++
++  if ((*width == -1) && (*height == -1))
++    {
++      set_bg = GDK_IS_WINDOW (window);
++      gdk_drawable_get_size (window, width, height);
++    }
++  else if (*width == -1)
++    {
++      gdk_drawable_get_size (window, width, NULL);
++    }
++  else if (*height == -1)
++    {
++      gdk_drawable_get_size (window, NULL, height);
++    }
++
++  return set_bg;
++}
++
++static XpThemeElement
++map_gtk_progress_bar_to_xp (GtkProgressBar *progress_bar, gboolean trough)
++{
++  XpThemeElement ret;
++
++  switch (gtk_progress_bar_get_orientation (progress_bar))
++    {
++    case GTK_PROGRESS_LEFT_TO_RIGHT:
++    case GTK_PROGRESS_RIGHT_TO_LEFT:
++      ret = trough
++	? XP_THEME_ELEMENT_PROGRESS_TROUGH_H
++	: XP_THEME_ELEMENT_PROGRESS_BAR_H;
++      break;
++
++    default:
++      ret = trough
++	? XP_THEME_ELEMENT_PROGRESS_TROUGH_V
++	: XP_THEME_ELEMENT_PROGRESS_BAR_V;
++      break;
++    }
++
++  return ret;
++}
++
++static gboolean
++is_combo_box_child (GtkWidget *w)
++{
++  GtkWidget *tmp;
++
++  if (w == NULL)
++    return FALSE;
++
++  for (tmp = w->parent; tmp; tmp = tmp->parent)
++    {
++      if (GTK_IS_COMBO_BOX (tmp))
++	return TRUE;
++    }
++
++  return FALSE;
++}
++
++static void
++draw_part (GdkDrawable *drawable,
++           GdkColor *gc, GdkRectangle *area, gint x, gint y, Part part)
++{
++  cairo_t *cr = gdk_cairo_create (drawable);
++
++  if (area)
++    {
++      gdk_cairo_rectangle (cr, area);
++      cairo_clip (cr);
++    }
++
++  if (!parts[part].bmap)
++    {
++      parts[part].bmap = cairo_image_surface_create_for_data ((unsigned char *)parts[part].bits,
++        					              CAIRO_FORMAT_A1,
++        					              PART_SIZE, PART_SIZE, 4);
++    }
++
++  gdk_cairo_set_source_color (cr, gc);
++  cairo_mask_surface (cr, parts[part].bmap, x, y);
++
++  cairo_destroy(cr);
++}
++
++static void
++draw_check (GtkStyle *style,
++	    GdkWindow *window,
++	    GtkStateType state,
++	    GtkShadowType shadow,
++	    GdkRectangle *area,
++	    GtkWidget *widget,
++	    const gchar *detail, gint x, gint y, gint width, gint height)
++{
++  x -= (1 + PART_SIZE - width) / 2;
++  y -= (1 + PART_SIZE - height) / 2;
++
++  if (DETAIL("check"))	/* Menu item */
++    {
++      if (shadow == GTK_SHADOW_IN)
++	{
++          draw_part (window, &style->black, area, x, y, CHECK_TEXT);
++          draw_part (window, &style->dark[state], area, x, y, CHECK_AA);
++	}
++    }
++  else
++    {
++      XpThemeElement theme_elt = XP_THEME_ELEMENT_CHECKBOX;
++      switch (shadow)
++	{
++	case GTK_SHADOW_ETCHED_IN:
++	  theme_elt = XP_THEME_ELEMENT_INCONSISTENT_CHECKBOX;
++	  break;
++
++	case GTK_SHADOW_IN:
++	  theme_elt = XP_THEME_ELEMENT_PRESSED_CHECKBOX;
++	  break;
++
++	default:
++	  break;
++	}
++
++      if (!xp_theme_draw (window, theme_elt,
++			  style, x, y, width, height, state, area))
++	{
++	  if (DETAIL("cellcheck"))
++	    state = GTK_STATE_NORMAL;
++
++          draw_part (window, &style->black, area, x, y, CHECK_BLACK);
++          draw_part (window, &style->dark[state], area, x, y, CHECK_DARK);
++          draw_part (window, &style->mid[state], area, x, y, CHECK_MID);
++          draw_part (window, &style->light[state], area, x, y, CHECK_LIGHT);
++          draw_part (window, &style->base[state], area, x, y, CHECK_BASE);
++
++	  if (shadow == GTK_SHADOW_IN)
++	    {
++              draw_part (window, &style->text[state], area, x,
++			 y, CHECK_TEXT);
++              draw_part (window, &style->text_aa[state], area,
++			 x, y, CHECK_AA);
++	    }
++	  else if (shadow == GTK_SHADOW_ETCHED_IN)
++	    {
++              draw_part (window, &style->text[state], area, x, y,
++			 CHECK_INCONSISTENT);
++              draw_part (window, &style->text_aa[state], area, x, y,
++			 CHECK_AA);
++	    }
++	}
++    }
++}
++
++static void
++draw_expander (GtkStyle        *style,
++               GdkWindow       *window,
++               GtkStateType     state,
++               GdkRectangle    *area,
++               GtkWidget       *widget,
++               const gchar     *detail,
++               gint             x,
++               gint             y,
++               GtkExpanderStyle expander_style)
++{
++  cairo_t *cr = gdk_cairo_create (window);
++
++  gint expander_size;
++  gint expander_semi_size;
++  XpThemeElement xp_expander;
++  GtkOrientation orientation;
++
++  gtk_widget_style_get (widget, "expander_size", &expander_size, NULL);
++
++  if (DETAIL("tool-palette-header"))
++    {
++      /* Expanders are usually drawn as little triangles and unfortunately
++       * do not support rotated drawing modes. So a hack is applied (see
++       * gtk_tool_item_group_header_expose_event_cb for details) when
++       * drawing a GtkToolItemGroup's header for horizontal GtkToolShells,
++       * forcing the triangle to point in the right direction. Except we
++       * don't draw expanders as triangles on Windows. Usually, expanders
++       * are represented as "+" and "-". It sucks for "+" to become "-" and
++       * the inverse when we don't want to, so reverse the hack here. */
++
++      orientation = gtk_tool_shell_get_orientation (GTK_TOOL_SHELL (widget));
++
++      if (orientation == GTK_ORIENTATION_HORIZONTAL)
++          expander_style = GTK_EXPANDER_EXPANDED - expander_style;
++    }
++
++  switch (expander_style)
++    {
++    case GTK_EXPANDER_COLLAPSED:
++    case GTK_EXPANDER_SEMI_COLLAPSED:
++      xp_expander = XP_THEME_ELEMENT_TREEVIEW_EXPANDER_CLOSED;
++      break;
++
++    case GTK_EXPANDER_EXPANDED:
++    case GTK_EXPANDER_SEMI_EXPANDED:
++      xp_expander = XP_THEME_ELEMENT_TREEVIEW_EXPANDER_OPENED;
++      break;
++
++    default:
++      g_assert_not_reached ();
++    }
++
++  if ((expander_size % 2) == 0)
++    expander_size--;
++
++  if (expander_size > 2)
++    expander_size -= 2;
++
++  if (area)
++    {
++      gdk_cairo_rectangle (cr, area);
++      cairo_clip (cr);
++      gdk_cairo_set_source_color (cr, &style->fg[state]);
++    }
++
++  expander_semi_size = expander_size / 2;
++  x -= expander_semi_size;
++  y -= expander_semi_size;
++
++  if (!xp_theme_draw (window, xp_expander, style,
++		      x, y, expander_size, expander_size, state, area))
++    {
++      HDC dc;
++      RECT rect;
++      HPEN pen;
++      HGDIOBJ old_pen;
++      XpDCInfo dc_info;
++
++      dc = get_window_dc (style, window, state, &dc_info, x, y, expander_size,
++			  expander_size, &rect);
++      FrameRect (dc, &rect, GetSysColorBrush (COLOR_GRAYTEXT));
++      InflateRect (&rect, -1, -1);
++      FillRect (dc, &rect,
++		GetSysColorBrush (state ==
++				  GTK_STATE_INSENSITIVE ? COLOR_BTNFACE :
++				  COLOR_WINDOW));
++
++      InflateRect (&rect, -1, -1);
++
++      pen = CreatePen (PS_SOLID, 1, GetSysColor (COLOR_WINDOWTEXT));
++      old_pen = SelectObject (dc, pen);
++
++      MoveToEx (dc, rect.left, rect.top - 2 + expander_semi_size, NULL);
++      LineTo (dc, rect.right, rect.top - 2 + expander_semi_size);
++
++      if (expander_style == GTK_EXPANDER_COLLAPSED ||
++	  expander_style == GTK_EXPANDER_SEMI_COLLAPSED)
++	{
++	  MoveToEx (dc, rect.left - 2 + expander_semi_size, rect.top, NULL);
++	  LineTo (dc, rect.left - 2 + expander_semi_size, rect.bottom);
++	}
++
++      SelectObject (dc, old_pen);
++      DeleteObject (pen);
++      release_window_dc (&dc_info);
++    }
++
++  cairo_destroy(cr);
++}
++
++static void
++draw_option (GtkStyle *style,
++	     GdkWindow *window,
++	     GtkStateType state,
++	     GtkShadowType shadow,
++	     GdkRectangle *area,
++	     GtkWidget *widget,
++	     const gchar *detail, gint x, gint y, gint width, gint height)
++{
++  x -= (1 + PART_SIZE - width) / 2;
++  y -= (1 + PART_SIZE - height) / 2;
++
++  if (DETAIL("option"))	/* Menu item */
++    {
++      if (shadow == GTK_SHADOW_IN)
++	{
++          draw_part (window, &style->fg[state], area, x, y, RADIO_TEXT);
++	}
++    }
++  else
++    {
++      if (xp_theme_draw (window, shadow == GTK_SHADOW_IN
++			 ? XP_THEME_ELEMENT_PRESSED_RADIO_BUTTON
++			 : XP_THEME_ELEMENT_RADIO_BUTTON,
++			 style, x, y, width, height, state, area))
++	{
++	}
++      else
++	{
++	  if (DETAIL("cellradio"))
++	    state = GTK_STATE_NORMAL;
++
++          draw_part (window, &style->black, area, x, y, RADIO_BLACK);
++          draw_part (window, &style->dark[state], area, x, y, RADIO_DARK);
++          draw_part (window, &style->mid[state], area, x, y, RADIO_MID);
++          draw_part (window, &style->light[state], area, x, y, RADIO_LIGHT);
++          draw_part (window, &style->base[state], area, x, y, RADIO_BASE);
++
++	  if (shadow == GTK_SHADOW_IN)
++            draw_part (window, &style->text[state], area, x, y, RADIO_TEXT);
++	}
++    }
++}
++
++static void
++draw_varrow (GdkWindow *window,
++             GdkColor *gc,
++	     GtkShadowType shadow_type,
++	     GdkRectangle *area,
++	     GtkArrowType arrow_type, gint x, gint y, gint width, gint height)
++{
++  gint steps, extra;
++  gint y_start, y_increment;
++  gint i;
++  cairo_t *cr;
++  
++  cr = gdk_cairo_create (window);
++
++  if (area)
++    {
++       gdk_cairo_rectangle (cr, area);
++       cairo_clip (cr);
++    }
++
++  width = width + width % 2 - 1;	/* Force odd */
++  steps = 1 + width / 2;
++  extra = height - steps;
++
++  if (arrow_type == GTK_ARROW_DOWN)
++    {
++      y_start = y;
++      y_increment = 1;
++    }
++  else
++    {
++      y_start = y + height - 1;
++      y_increment = -1;
++    }
++
++  gdk_cairo_set_source_color (cr, gc);
++  cairo_set_line_cap (cr, CAIRO_LINE_CAP_SQUARE);
++  cairo_set_line_width (cr, 1.0);
++  cairo_set_antialias (cr, CAIRO_ANTIALIAS_NONE);
++
++  cairo_move_to (cr, x + 0.5, y_start + extra * y_increment + 0.5);
++  cairo_line_to (cr, x + width - 1 + 0.5, y_start + extra * y_increment + 0.5);
++  cairo_line_to (cr, x + (height - 1 - extra) + 0.5, y_start + (height - 1) * y_increment + 0.5);
++  cairo_close_path (cr);
++  cairo_stroke_preserve (cr);
++  cairo_fill (cr);
++
++  cairo_destroy(cr);
++}
++
++static void
++draw_harrow (GdkWindow *window,
++             GdkColor *gc,
++	     GtkShadowType shadow_type,
++	     GdkRectangle *area,
++	     GtkArrowType arrow_type, gint x, gint y, gint width, gint height)
++{
++  gint steps, extra;
++  gint x_start, x_increment;
++  gint i;
++  cairo_t *cr;
++  
++  cr = gdk_cairo_create (window);
++
++  if (area)
++    {
++       gdk_cairo_rectangle (cr, area);
++       cairo_clip (cr);
++    }
++
++  height = height + height % 2 - 1;	/* Force odd */
++  steps = 1 + height / 2;
++  extra = width - steps;
++
++  if (arrow_type == GTK_ARROW_RIGHT)
++    {
++      x_start = x;
++      x_increment = 1;
++    }
++  else
++    {
++      x_start = x + width - 1;
++      x_increment = -1;
++    }
++
++  gdk_cairo_set_source_color (cr, gc);
++  cairo_set_line_cap (cr, CAIRO_LINE_CAP_SQUARE);
++  cairo_set_line_width (cr, 1.0);
++  cairo_set_antialias (cr, CAIRO_ANTIALIAS_NONE);
++
++  cairo_move_to (cr, x_start + extra * x_increment + 0.5, y + 0.5);
++  cairo_line_to (cr, x_start + extra * x_increment + 0.5, y + height - 1 + 0.5);
++  cairo_line_to (cr, x_start + (width - 1) * x_increment + 0.5, y + height - (width - 1 - extra) - 1 + 0.5);
++  cairo_close_path (cr);
++  cairo_stroke_preserve (cr);
++  cairo_fill (cr);
++
++  cairo_destroy(cr);
++}
++
++/* This function makes up for some brokeness in gtkrange.c
++ * where we never get the full arrow of the stepper button
++ * and the type of button in a single drawing function.
++ *
++ * It doesn't work correctly when the scrollbar is squished
++ * to the point we don't have room for full-sized steppers.
++ */
++static void
++reverse_engineer_stepper_box (GtkWidget *range,
++			      GtkArrowType arrow_type,
++			      gint *x, gint *y, gint *width, gint *height)
++{
++  gint slider_width = 14, stepper_size = 14;
++  gint box_width;
++  gint box_height;
++
++  if (range)
++    {
++      gtk_widget_style_get (range,
++			    "slider_width", &slider_width,
++			    "stepper_size", &stepper_size, NULL);
++    }
++
++  if (arrow_type == GTK_ARROW_UP || arrow_type == GTK_ARROW_DOWN)
++    {
++      box_width = slider_width;
++      box_height = stepper_size;
++    }
++  else
++    {
++      box_width = stepper_size;
++      box_height = slider_width;
++    }
++
++  *x = *x - (box_width - *width) / 2;
++  *y = *y - (box_height - *height) / 2;
++  *width = box_width;
++  *height = box_height;
++}
++
++static XpThemeElement
++to_xp_arrow (GtkArrowType arrow_type)
++{
++  XpThemeElement xp_arrow;
++
++  switch (arrow_type)
++    {
++    case GTK_ARROW_UP:
++      xp_arrow = XP_THEME_ELEMENT_ARROW_UP;
++      break;
++
++    case GTK_ARROW_DOWN:
++      xp_arrow = XP_THEME_ELEMENT_ARROW_DOWN;
++      break;
++
++    case GTK_ARROW_LEFT:
++      xp_arrow = XP_THEME_ELEMENT_ARROW_LEFT;
++      break;
++
++    default:
++      xp_arrow = XP_THEME_ELEMENT_ARROW_RIGHT;
++      break;
++    }
++
++  return xp_arrow;
++}
++
++static void
++draw_arrow (GtkStyle *style,
++	    GdkWindow *window,
++	    GtkStateType state,
++	    GtkShadowType shadow,
++	    GdkRectangle *area,
++	    GtkWidget *widget,
++	    const gchar *detail,
++	    GtkArrowType arrow_type,
++	    gboolean fill, gint x, gint y, gint width, gint height)
++{
++  const gchar *name;
++  HDC dc;
++  RECT rect;
++  XpDCInfo dc_info;
++
++  name = gtk_widget_get_name (widget);
++
++  sanitize_size (window, &width, &height);
++
++  if (GTK_IS_ARROW (widget) && is_combo_box_child (widget) && xp_theme_is_active ())
++    return;
++
++  if (DETAIL("spinbutton"))
++    {
++      if (xp_theme_is_drawable (XP_THEME_ELEMENT_SPIN_BUTTON_UP))
++	{
++	  return;
++	}
++
++      width -= 2;
++      --height;
++      if (arrow_type == GTK_ARROW_DOWN)
++	++y;
++      ++x;
++
++      if (state == GTK_STATE_ACTIVE)
++	{
++	  ++x;
++	  ++y;
++	}
++
++      draw_varrow (window, &style->fg[state], shadow, area,
++		   arrow_type, x, y, width, height);
++
++      return;
++    }
++  else if (DETAIL("vscrollbar") || DETAIL("hscrollbar"))
++    {
++      gboolean is_disabled = FALSE;
++      UINT btn_type = 0;
++      GtkScrollbar *scrollbar = GTK_SCROLLBAR (widget);
++
++      gint box_x = x;
++      gint box_y = y;
++      gint box_width = width;
++      gint box_height = height;
++
++      reverse_engineer_stepper_box (widget, arrow_type,
++				    &box_x, &box_y, &box_width, &box_height);
++
++      if (gtk_range_get_adjustment(&scrollbar->range)->page_size >=
++          (gtk_range_get_adjustment(&scrollbar->range)->upper -
++           gtk_range_get_adjustment(&scrollbar->range)->lower))
++	{
++	  is_disabled = TRUE;
++	}
++
++      if (xp_theme_draw (window, to_xp_arrow (arrow_type), style, box_x, box_y,
++			 box_width, box_height, state, area))
++	{
++	}
++      else
++	{
++	  switch (arrow_type)
++	    {
++	    case GTK_ARROW_UP:
++	      btn_type = DFCS_SCROLLUP;
++	      break;
++
++	    case GTK_ARROW_DOWN:
++	      btn_type = DFCS_SCROLLDOWN;
++	      break;
++
++	    case GTK_ARROW_LEFT:
++	      btn_type = DFCS_SCROLLLEFT;
++	      break;
++
++	    case GTK_ARROW_RIGHT:
++	      btn_type = DFCS_SCROLLRIGHT;
++	      break;
++
++	    case GTK_ARROW_NONE:
++	      break;
++	    }
++
++	  if (state == GTK_STATE_INSENSITIVE)
++	    {
++	      btn_type |= DFCS_INACTIVE;
++	    }
++
++	  if (widget)
++	    {
++	      sanitize_size (window, &width, &height);
++
++	      dc = get_window_dc (style, window, state, &dc_info,
++				  box_x, box_y, box_width, box_height, &rect);
++	      DrawFrameControl (dc, &rect, DFC_SCROLL,
++				btn_type | (shadow ==
++					    GTK_SHADOW_IN ? (DFCS_PUSHED |
++							     DFCS_FLAT) : 0));
++	      release_window_dc (&dc_info);
++	    }
++	}
++    }
++  else
++    {
++      /* draw the toolbar chevrons - waiting for GTK 2.4 */
++      if (name && !strcmp (name, "gtk-toolbar-arrow"))
++	{
++	  if (xp_theme_draw
++	      (window, XP_THEME_ELEMENT_REBAR_CHEVRON, style, x, y,
++	       width, height, state, area))
++	    {
++	      return;
++	    }
++	}
++      /* probably a gtk combo box on a toolbar */
++      else if (0		/* widget->parent && GTK_IS_BUTTON
++				   (widget->parent) */ )
++	{
++	  if (xp_theme_draw
++	      (window, XP_THEME_ELEMENT_COMBOBUTTON, style, x - 3,
++	       widget->allocation.y + 1, width + 5,
++	       widget->allocation.height - 4, state, area))
++	    {
++	      return;
++	    }
++	}
++
++      if (arrow_type == GTK_ARROW_UP || arrow_type == GTK_ARROW_DOWN)
++	{
++	  x += (width - 7) / 2;
++	  y += (height - 5) / 2;
++
++          draw_varrow (window, &style->fg[state], shadow, area,
++		       arrow_type, x, y, 7, 5);
++	}
++      else
++	{
++	  x += (width - 5) / 2;
++	  y += (height - 7) / 2;
++
++          draw_harrow (window, &style->fg[state], shadow, area,
++		       arrow_type, x, y, 5, 7);
++	}
++    }
++}
++
++static void
++option_menu_get_props (GtkWidget *widget,
++		       GtkRequisition *indicator_size,
++		       GtkBorder *indicator_spacing)
++{
++  GtkRequisition *tmp_size = NULL;
++  GtkBorder *tmp_spacing = NULL;
++
++  if (widget)
++    gtk_widget_style_get (widget,
++			  "indicator_size", &tmp_size,
++			  "indicator_spacing", &tmp_spacing, NULL);
++
++  if (tmp_size)
++    {
++      *indicator_size = *tmp_size;
++      gtk_requisition_free (tmp_size);
++    }
++  else
++    {
++      *indicator_size = default_option_indicator_size;
++    }
++
++  if (tmp_spacing)
++    {
++      *indicator_spacing = *tmp_spacing;
++      gtk_border_free (tmp_spacing);
++    }
++  else
++    {
++      *indicator_spacing = default_option_indicator_spacing;
++    }
++}
++
++static gboolean
++is_toolbar_child (GtkWidget *wid)
++{
++  while (wid)
++    {
++      if (GTK_IS_TOOLBAR (wid) || GTK_IS_HANDLE_BOX (wid))
++	return TRUE;
++      else
++	wid = wid->parent;
++    }
++
++  return FALSE;
++}
++
++static gboolean
++is_menu_tool_button_child (GtkWidget *wid)
++{
++  while (wid)
++    {
++      if (GTK_IS_MENU_TOOL_BUTTON (wid))
++	return TRUE;
++      else
++	wid = wid->parent;
++    }
++  return FALSE;
++}
++
++static HPEN
++get_light_pen ()
++{
++  if (!g_light_pen)
++    {
++      g_light_pen = CreatePen (PS_SOLID | PS_INSIDEFRAME, 1,
++			       GetSysColor (COLOR_BTNHIGHLIGHT));
++    }
++
++  return g_light_pen;
++}
++
++static HPEN
++get_dark_pen ()
++{
++  if (!g_dark_pen)
++    {
++      g_dark_pen = CreatePen (PS_SOLID | PS_INSIDEFRAME, 1,
++			      GetSysColor (COLOR_BTNSHADOW));
++    }
++
++  return g_dark_pen;
++}
++
++static void
++draw_3d_border (HDC hdc, RECT *rc, gboolean sunken)
++{
++  HPEN pen1, pen2;
++  HGDIOBJ old_pen;
++
++  if (sunken)
++    {
++      pen1 = get_dark_pen ();
++      pen2 = get_light_pen ();
++    }
++  else
++    {
++      pen1 = get_light_pen ();
++      pen2 = get_dark_pen ();
++    }
++
++  MoveToEx (hdc, rc->left, rc->bottom - 1, NULL);
++
++  old_pen = SelectObject (hdc, pen1);
++  LineTo (hdc, rc->left, rc->top);
++  LineTo (hdc, rc->right - 1, rc->top);
++  SelectObject (hdc, old_pen);
++
++  old_pen = SelectObject (hdc, pen2);
++  LineTo (hdc, rc->right - 1, rc->bottom - 1);
++  LineTo (hdc, rc->left, rc->bottom - 1);
++  SelectObject (hdc, old_pen);
++}
++
++static gboolean
++draw_menu_item (GdkWindow *window, GtkWidget *widget, GtkStyle *style,
++		gint x, gint y, gint width, gint height,
++		GtkStateType state_type, GdkRectangle *area)
++{
++  GtkWidget *parent;
++  GtkMenuShell *bar;
++  HDC dc;
++  RECT rect;
++  XpDCInfo dc_info;
++
++  if (xp_theme_is_active ())
++    {
++      return (xp_theme_draw (window, XP_THEME_ELEMENT_MENU_ITEM, style,
++                             x, y, width, height, state_type, area));
++    }
++
++  if ((parent = gtk_widget_get_parent (widget))
++      && GTK_IS_MENU_BAR (parent) && !xp_theme_is_active ())
++    {
++      bar = GTK_MENU_SHELL (parent);
++
++      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++      if (state_type == GTK_STATE_PRELIGHT)
++	{
++	  draw_3d_border (dc, &rect, bar->active);
++	}
++
++      release_window_dc (&dc_info);
++
++      return TRUE;
++    }
++
++  return FALSE;
++}
++
++static HBRUSH
++get_dither_brush (void)
++{
++  WORD pattern[8];
++  HBITMAP pattern_bmp;
++  int i;
++
++  if (g_dither_brush)
++    return g_dither_brush;
++
++  for (i = 0; i < 8; i++)
++    {
++      pattern[i] = (WORD) (0x5555 << (i & 1));
++    }
++
++  pattern_bmp = CreateBitmap (8, 8, 1, 1, &pattern);
++
++  if (pattern_bmp)
++    {
++      g_dither_brush = CreatePatternBrush (pattern_bmp);
++      DeleteObject (pattern_bmp);
++    }
++
++  return g_dither_brush;
++}
++
++static gboolean
++draw_tool_button (GdkWindow *window, GtkWidget *widget, GtkStyle *style,
++		  gint x, gint y, gint width, gint height,
++		  GtkStateType state_type, GdkRectangle *area)
++{
++  HDC dc;
++  RECT rect;
++  XpDCInfo dc_info;
++  gboolean is_toggled = FALSE;
++
++  if (xp_theme_is_active ())
++    {
++      return (xp_theme_draw (window, XP_THEME_ELEMENT_TOOLBAR_BUTTON, style,
++			     x, y, width, height, state_type, area));
++    }
++
++  if (GTK_IS_TOGGLE_BUTTON (widget))
++    {
++      if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (widget)))
++	{
++	  is_toggled = TRUE;
++	}
++    }
++
++  if (state_type != GTK_STATE_PRELIGHT
++      && state_type != GTK_STATE_ACTIVE && !is_toggled)
++    {
++      return FALSE;
++    }
++
++  dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++  if (state_type == GTK_STATE_PRELIGHT)
++    {
++      if (is_toggled)
++	{
++	  FillRect (dc, &rect, GetSysColorBrush (COLOR_BTNFACE));
++	}
++
++      draw_3d_border (dc, &rect, is_toggled);
++    }
++  else if (state_type == GTK_STATE_ACTIVE)
++    {
++      if (is_toggled && !is_menu_tool_button_child (widget->parent))
++	{
++	  SetTextColor (dc, GetSysColor (COLOR_3DHILIGHT));
++	  SetBkColor (dc, GetSysColor (COLOR_BTNFACE));
++	  FillRect (dc, &rect, get_dither_brush ());
++	}
++
++      draw_3d_border (dc, &rect, TRUE);
++    }
++
++  release_window_dc (&dc_info);
++
++  return TRUE;
++}
++
++static void
++draw_push_button (GdkWindow *window, GtkWidget *widget, GtkStyle *style,
++		  gint x, gint y, gint width, gint height,
++		  GtkStateType state_type, gboolean is_default)
++{
++  HDC dc;
++  RECT rect;
++  XpDCInfo dc_info;
++
++  dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++  if (GTK_IS_TOGGLE_BUTTON (widget))
++    {
++      if (state_type == GTK_STATE_PRELIGHT &&
++	  gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (widget)))
++	{
++	  state_type = GTK_STATE_ACTIVE;
++	}
++    }
++
++  if (state_type == GTK_STATE_ACTIVE)
++    {
++      if (GTK_IS_TOGGLE_BUTTON (widget))
++	{
++	  DrawEdge (dc, &rect, EDGE_SUNKEN, BF_RECT | BF_ADJUST);
++	  SetTextColor (dc, GetSysColor (COLOR_3DHILIGHT));
++	  SetBkColor (dc, GetSysColor (COLOR_BTNFACE));
++	  FillRect (dc, &rect, get_dither_brush ());
++	}
++      else
++	{
++	  FrameRect (dc, &rect, GetSysColorBrush (COLOR_WINDOWFRAME));
++	  InflateRect (&rect, -1, -1);
++	  FrameRect (dc, &rect, GetSysColorBrush (COLOR_BTNSHADOW));
++	  InflateRect (&rect, -1, -1);
++	  FillRect (dc, &rect, GetSysColorBrush (COLOR_BTNFACE));
++	}
++    }
++  else
++    {
++      if (is_default || gtk_widget_has_focus (widget))
++	{
++	  FrameRect (dc, &rect, GetSysColorBrush (COLOR_WINDOWFRAME));
++	  InflateRect (&rect, -1, -1);
++	}
++
++      DrawFrameControl (dc, &rect, DFC_BUTTON, DFCS_BUTTONPUSH);
++    }
++
++  release_window_dc (&dc_info);
++}
++
++static void
++draw_box (GtkStyle *style,
++	  GdkWindow *window,
++	  GtkStateType state_type,
++	  GtkShadowType shadow_type,
++	  GdkRectangle *area,
++	  GtkWidget *widget,
++	  const gchar *detail, gint x, gint y, gint width, gint height)
++{
++  if (is_combo_box_child (widget) && DETAIL("button"))
++    {
++      RECT rect;
++      XpDCInfo dc_info;
++      DWORD border;
++      HDC dc;
++      int cx;
++
++      border = (GTK_TOGGLE_BUTTON (widget)->active ? DFCS_PUSHED | DFCS_FLAT : 0);
++
++      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++      DrawFrameControl (dc, &rect, DFC_SCROLL, DFCS_SCROLLDOWN | border);
++      release_window_dc (&dc_info);
++
++      if (xp_theme_is_active ()
++	  && xp_theme_draw (window, XP_THEME_ELEMENT_COMBOBUTTON, style, x, y,
++			    width, height, state_type, area))
++	{
++      cx = GetSystemMetrics(SM_CXVSCROLL);
++      x += width - cx;
++      width = cx;
++
++
++      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width - cx, height, &rect);
++      FillRect (dc, &rect, GetSysColorBrush (COLOR_WINDOW));
++      release_window_dc (&dc_info);
++      return;
++	}
++    }
++
++  if (DETAIL("button") || DETAIL("buttondefault"))
++    {
++      if (GTK_IS_TREE_VIEW (widget->parent) || GTK_IS_CLIST (widget->parent))
++      {
++        if (xp_theme_draw
++	      (window, XP_THEME_ELEMENT_LIST_HEADER, style, x, y,
++	       width, height, state_type, area))
++	    {
++	      return;
++	    }
++	  else
++	    {
++	      HDC dc;
++	      RECT rect;
++	      XpDCInfo dc_info;
++	      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++	      DrawFrameControl (dc, &rect, DFC_BUTTON, DFCS_BUTTONPUSH |
++				(state_type ==
++				 GTK_STATE_ACTIVE ? (DFCS_PUSHED | DFCS_FLAT)
++				 : 0));
++	      release_window_dc (&dc_info);
++	    }
++	}
++      else if (is_toolbar_child (widget->parent)
++	       || (!GTK_IS_BUTTON (widget) ||
++		   (GTK_RELIEF_NONE == gtk_button_get_relief (GTK_BUTTON (widget)))))
++	{
++	  if (draw_tool_button (window, widget, style, x, y,
++				width, height, state_type, area))
++	    {
++	      return;
++	    }
++	}
++      else
++	{
++	  gboolean is_default = gtk_widget_has_default (widget);
++	  if (xp_theme_draw
++	      (window,
++	       is_default ? XP_THEME_ELEMENT_DEFAULT_BUTTON :
++	       XP_THEME_ELEMENT_BUTTON, style, x, y, width, height,
++	       state_type, area))
++	    {
++	      return;
++	    }
++
++	  draw_push_button (window, widget, style,
++			    x, y, width, height, state_type, is_default);
++
++	  return;
++	}
++
++      return;
++    }
++  else if (DETAIL("spinbutton"))
++    {
++      if (xp_theme_is_drawable (XP_THEME_ELEMENT_SPIN_BUTTON_UP))
++	{
++	  return;
++	}
++    }
++  else if (DETAIL("spinbutton_up") || DETAIL("spinbutton_down"))
++    {
++      if (!xp_theme_draw (window,
++			  DETAIL("spinbutton_up")
++			  ? XP_THEME_ELEMENT_SPIN_BUTTON_UP
++			  : XP_THEME_ELEMENT_SPIN_BUTTON_DOWN,
++			  style, x, y, width, height, state_type, area))
++	{
++	  RECT rect;
++	  XpDCInfo dc_info;
++	  HDC dc;
++
++	  dc = get_window_dc (style, window, state_type, &dc_info,
++			      x, y, width, height, &rect);
++	  DrawEdge (dc, &rect,
++		    state_type ==
++		    GTK_STATE_ACTIVE ? EDGE_SUNKEN : EDGE_RAISED, BF_RECT);
++	  release_window_dc (&dc_info);
++	}
++      return;
++    }
++  else if (DETAIL("slider"))
++    {
++      if (GTK_IS_SCROLLBAR (widget))
++	{
++	  GtkScrollbar *scrollbar = GTK_SCROLLBAR (widget);
++	  GtkOrientation orientation;
++	  gboolean is_vertical;
++
++          orientation = gtk_orientable_get_orientation (GTK_ORIENTABLE (widget));
++
++          if (orientation == GTK_ORIENTATION_VERTICAL)
++            is_vertical = TRUE;
++          else
++            is_vertical = FALSE;
++
++	  if (xp_theme_draw (window,
++			     is_vertical
++			     ? XP_THEME_ELEMENT_SCROLLBAR_V
++			     : XP_THEME_ELEMENT_SCROLLBAR_H,
++			     style, x, y, width, height, state_type, area))
++	    {
++	      XpThemeElement gripper =
++		(is_vertical ? XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_V :
++		 XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_H);
++
++	      /* Do not display grippers on tiny scroll bars,
++	         the limit imposed is rather arbitrary, perhaps
++	         we can fetch the gripper geometry from
++	         somewhere and use that... */
++	      if ((gripper ==
++		   XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_H
++		   && width < 16)
++		  || (gripper ==
++		      XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_V && height < 16))
++		{
++		  return;
++		}
++
++	      xp_theme_draw (window, gripper, style, x, y,
++			     width, height, state_type, area);
++	      return;
++	    }
++	  else
++	    {
++              if (gtk_range_get_adjustment(&scrollbar->range)->page_size >=
++        	  (gtk_range_get_adjustment(&scrollbar->range)->upper -
++        	   gtk_range_get_adjustment(&scrollbar->range)->lower))
++		{
++		  return;
++		}
++	    }
++	}
++    }
++  else if (DETAIL("bar"))
++    {
++      if (widget && GTK_IS_PROGRESS_BAR (widget))
++	{
++	  GtkProgressBar *progress_bar = GTK_PROGRESS_BAR (widget);
++	  XpThemeElement xp_progress_bar =
++	    map_gtk_progress_bar_to_xp (progress_bar, FALSE);
++
++	  if (xp_theme_draw (window, xp_progress_bar, style, x, y,
++			     width, height, state_type, area))
++	    {
++	      return;
++	    }
++
++	  shadow_type = GTK_SHADOW_NONE;
++	}
++    }
++  else if (DETAIL("menuitem"))
++    {
++      shadow_type = GTK_SHADOW_NONE;
++      if (draw_menu_item (window, widget, style,
++			  x, y, width, height, state_type, area))
++	{
++	  return;
++	}
++    }
++  else if (DETAIL("trough"))
++    {
++      if (widget && GTK_IS_PROGRESS_BAR (widget))
++	{
++	  GtkProgressBar *progress_bar = GTK_PROGRESS_BAR (widget);
++	  XpThemeElement xp_progress_bar =
++	    map_gtk_progress_bar_to_xp (progress_bar, TRUE);
++	  if (xp_theme_draw
++	      (window, xp_progress_bar, style, x, y, width, height,
++	       state_type, area))
++	    {
++	      return;
++	    }
++	  else
++	    {
++	      /* Blank in classic Windows */
++	    }
++	}
++      else if (widget && GTK_IS_SCROLLBAR (widget))
++	{
++          GtkOrientation orientation;
++	  gboolean is_vertical;
++
++          orientation = gtk_orientable_get_orientation (GTK_ORIENTABLE (widget));
++
++          if (orientation == GTK_ORIENTATION_VERTICAL)
++            is_vertical = TRUE;
++          else
++            is_vertical = FALSE;
++
++	  if (xp_theme_draw (window,
++			     is_vertical
++			     ? XP_THEME_ELEMENT_TROUGH_V
++			     : XP_THEME_ELEMENT_TROUGH_H,
++			     style, x, y, width, height, state_type, area))
++	    {
++	      return;
++	    }
++	  else
++	    {
++	      HDC dc;
++	      RECT rect;
++	      XpDCInfo dc_info;
++
++	      sanitize_size (window, &width, &height);
++	      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++	      SetTextColor (dc, GetSysColor (COLOR_3DHILIGHT));
++	      SetBkColor (dc, GetSysColor (COLOR_BTNFACE));
++	      FillRect (dc, &rect, get_dither_brush ());
++
++	      release_window_dc (&dc_info);
++
++	      return;
++	    }
++	}
++      else if (widget && GTK_IS_SCALE (widget))
++	{
++          GtkOrientation orientation;
++
++          orientation = gtk_orientable_get_orientation (GTK_ORIENTABLE (widget));
++
++	  if (!xp_theme_is_active ())
++	    {
++	      parent_class->draw_box (style, window, state_type,
++				      GTK_SHADOW_NONE, area,
++				      widget, detail, x, y, width, height);
++	    }
++
++	  if (orientation == GTK_ORIENTATION_VERTICAL)
++	    {
++	      if (xp_theme_draw
++		  (window, XP_THEME_ELEMENT_SCALE_TROUGH_V,
++		   style, (2 * x + width) / 2, y, 2, height,
++		   state_type, area))
++		{
++		  return;
++		}
++
++	      parent_class->draw_box (style, window, state_type,
++				      GTK_SHADOW_ETCHED_IN,
++				      area, NULL, NULL,
++				      (2 * x + width) / 2, y, 1, height);
++	    }
++	  else
++	    {
++	      if (xp_theme_draw
++		  (window, XP_THEME_ELEMENT_SCALE_TROUGH_H,
++		   style, x, (2 * y + height) / 2, width, 2,
++		   state_type, area))
++		{
++		  return;
++		}
++
++	      parent_class->draw_box (style, window, state_type,
++				      GTK_SHADOW_ETCHED_IN,
++				      area, NULL, NULL, x,
++				      (2 * y + height) / 2, width, 1);
++	    }
++
++	  return;
++	}
++    }
++  else if (DETAIL("optionmenu"))
++    {
++      if (xp_theme_draw (window, XP_THEME_ELEMENT_EDIT_TEXT,
++			 style, x, y, width, height, state_type, area))
++	{
++	  return;
++	}
++    }
++  else if (DETAIL("vscrollbar") || DETAIL("hscrollbar"))
++    {
++      return;
++    }
++  else if (DETAIL("handlebox_bin") || DETAIL("toolbar") || DETAIL("menubar"))
++    {
++      sanitize_size (window, &width, &height);
++      if (xp_theme_draw (window, XP_THEME_ELEMENT_REBAR,
++			 style, x, y, width, height, state_type, area))
++	{
++	  return;
++	}
++    }
++  else if (DETAIL("handlebox"))	/* grip */
++    {
++      if (!xp_theme_is_active ())
++	{
++	  return;
++	}
++    }
++  else if (DETAIL("notebook") && GTK_IS_NOTEBOOK (widget))
++    {
++      if (xp_theme_draw (window, XP_THEME_ELEMENT_TAB_PANE, style,
++			 x, y, width, height, state_type, area))
++	{
++	  return;
++	}
++    }
++
++  else
++    {
++      const gchar *name = gtk_widget_get_name (widget);
++
++      if (name && !strcmp (name, "gtk-tooltips"))
++	{
++	  if (xp_theme_draw
++	      (window, XP_THEME_ELEMENT_TOOLTIP, style, x, y, width,
++	       height, state_type, area))
++	    {
++	      return;
++	    }
++	  else
++	    {
++	      HBRUSH brush;
++	      RECT rect;
++	      XpDCInfo dc_info;
++	      HDC hdc;
++
++	      hdc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++	      brush = GetSysColorBrush (COLOR_3DDKSHADOW);
++
++	      if (brush)
++		{
++		  FrameRect (hdc, &rect, brush);
++		}
++
++	      InflateRect (&rect, -1, -1);
++	      FillRect (hdc, &rect, (HBRUSH) (COLOR_INFOBK + 1));
++
++	      release_window_dc (&dc_info);
++
++	      return;
++	    }
++	}
++    }
++
++  parent_class->draw_box (style, window, state_type, shadow_type, area,
++			  widget, detail, x, y, width, height);
++
++  if (DETAIL("optionmenu"))
++    {
++      GtkRequisition indicator_size;
++      GtkBorder indicator_spacing;
++      gint vline_x;
++
++      option_menu_get_props (widget, &indicator_size, &indicator_spacing);
++
++      sanitize_size (window, &width, &height);
++
++      if (gtk_widget_get_direction (widget) == GTK_TEXT_DIR_RTL)
++	{
++	  vline_x =
++	    x + indicator_size.width + indicator_spacing.left +
++	    indicator_spacing.right;
++	}
++      else
++	{
++	  vline_x = x + width - (indicator_size.width +
++				 indicator_spacing.left +
++				 indicator_spacing.right) - style->xthickness;
++
++	  parent_class->draw_vline (style, window, state_type, area, widget,
++				    detail,
++				    y + style->ythickness + 1,
++				    y + height - style->ythickness - 3, vline_x);
++	}
++    }
++}
++
++static void
++draw_tab (GtkStyle *style,
++	  GdkWindow *window,
++	  GtkStateType state,
++	  GtkShadowType shadow,
++	  GdkRectangle *area,
++	  GtkWidget *widget,
++	  const gchar *detail, gint x, gint y, gint width, gint height)
++{
++  GtkRequisition indicator_size;
++  GtkBorder indicator_spacing;
++
++  gint arrow_height;
++
++  g_return_if_fail (style != NULL);
++  g_return_if_fail (window != NULL);
++
++  if (DETAIL("optionmenutab"))
++    {
++      if (xp_theme_draw (window, XP_THEME_ELEMENT_COMBOBUTTON,
++			 style, x - 5, widget->allocation.y + 1,
++			 width + 10, widget->allocation.height - 2,
++			 state, area))
++	{
++	  return;
++	}
++    }
++
++  option_menu_get_props (widget, &indicator_size, &indicator_spacing);
++
++  x += (width - indicator_size.width) / 2;
++  arrow_height = (indicator_size.width + 1) / 2;
++
++  y += (height - arrow_height) / 2;
++
++  draw_varrow (window, &style->black, shadow, area, GTK_ARROW_DOWN,
++	       x, y, indicator_size.width, arrow_height);
++}
++
++/* Draw classic Windows tab - thanks Mozilla!
++  (no system API for this, but DrawEdge can draw all the parts of a tab) */
++static void
++DrawTab (HDC hdc, const RECT R, gint32 aPosition, gboolean aSelected,
++	 gboolean aDrawLeft, gboolean aDrawRight)
++{
++  gint32 leftFlag, topFlag, rightFlag, lightFlag, shadeFlag;
++  RECT topRect, sideRect, bottomRect, lightRect, shadeRect;
++  gint32 selectedOffset, lOffset, rOffset;
++
++  selectedOffset = aSelected ? 1 : 0;
++  lOffset = aDrawLeft ? 2 : 0;
++  rOffset = aDrawRight ? 2 : 0;
++
++  /* Get info for tab orientation/position (Left, Top, Right, Bottom) */
++  switch (aPosition)
++    {
++    case BF_LEFT:
++      leftFlag = BF_TOP;
++      topFlag = BF_LEFT;
++      rightFlag = BF_BOTTOM;
++      lightFlag = BF_DIAGONAL_ENDTOPRIGHT;
++      shadeFlag = BF_DIAGONAL_ENDBOTTOMRIGHT;
++
++      SetRect (&topRect, R.left, R.top + lOffset, R.right,
++	       R.bottom - rOffset);
++      SetRect (&sideRect, R.left + 2, R.top, R.right - 2 + selectedOffset,
++	       R.bottom);
++      SetRect (&bottomRect, R.right - 2, R.top, R.right, R.bottom);
++      SetRect (&lightRect, R.left, R.top, R.left + 3, R.top + 3);
++      SetRect (&shadeRect, R.left + 1, R.bottom - 2, R.left + 2,
++	       R.bottom - 1);
++      break;
++
++    case BF_TOP:
++      leftFlag = BF_LEFT;
++      topFlag = BF_TOP;
++      rightFlag = BF_RIGHT;
++      lightFlag = BF_DIAGONAL_ENDTOPRIGHT;
++      shadeFlag = BF_DIAGONAL_ENDBOTTOMRIGHT;
++
++      SetRect (&topRect, R.left + lOffset, R.top, R.right - rOffset,
++	       R.bottom);
++      SetRect (&sideRect, R.left, R.top + 2, R.right,
++	       R.bottom - 1 + selectedOffset);
++      SetRect (&bottomRect, R.left, R.bottom - 1, R.right, R.bottom);
++      SetRect (&lightRect, R.left, R.top, R.left + 3, R.top + 3);
++      SetRect (&shadeRect, R.right - 2, R.top + 1, R.right - 1, R.top + 2);
++      break;
++
++    case BF_RIGHT:
++      leftFlag = BF_TOP;
++      topFlag = BF_RIGHT;
++      rightFlag = BF_BOTTOM;
++      lightFlag = BF_DIAGONAL_ENDTOPLEFT;
++      shadeFlag = BF_DIAGONAL_ENDBOTTOMLEFT;
++
++      SetRect (&topRect, R.left, R.top + lOffset, R.right,
++	       R.bottom - rOffset);
++      SetRect (&sideRect, R.left + 2 - selectedOffset, R.top, R.right - 2,
++	       R.bottom);
++      SetRect (&bottomRect, R.left, R.top, R.left + 2, R.bottom);
++      SetRect (&lightRect, R.right - 3, R.top, R.right - 1, R.top + 2);
++      SetRect (&shadeRect, R.right - 2, R.bottom - 3, R.right, R.bottom - 1);
++      break;
++
++    case BF_BOTTOM:
++      leftFlag = BF_LEFT;
++      topFlag = BF_BOTTOM;
++      rightFlag = BF_RIGHT;
++      lightFlag = BF_DIAGONAL_ENDTOPLEFT;
++      shadeFlag = BF_DIAGONAL_ENDBOTTOMLEFT;
++
++      SetRect (&topRect, R.left + lOffset, R.top, R.right - rOffset,
++	       R.bottom);
++      SetRect (&sideRect, R.left, R.top + 2 - selectedOffset, R.right,
++	       R.bottom - 2);
++      SetRect (&bottomRect, R.left, R.top, R.right, R.top + 2);
++      SetRect (&lightRect, R.left, R.bottom - 3, R.left + 2, R.bottom - 1);
++      SetRect (&shadeRect, R.right - 2, R.bottom - 3, R.right, R.bottom - 1);
++      break;
++
++    default:
++      g_return_if_reached ();
++    }
++
++  /* Background */
++  FillRect (hdc, &R, (HBRUSH) (COLOR_3DFACE + 1));
++
++  /* Tab "Top" */
++  DrawEdge (hdc, &topRect, EDGE_RAISED, BF_SOFT | topFlag);
++
++  /* Tab "Bottom" */
++  if (!aSelected)
++    DrawEdge (hdc, &bottomRect, EDGE_RAISED, BF_SOFT | topFlag);
++
++  /* Tab "Sides" */
++  if (!aDrawLeft)
++    leftFlag = 0;
++  if (!aDrawRight)
++    rightFlag = 0;
++
++  DrawEdge (hdc, &sideRect, EDGE_RAISED, BF_SOFT | leftFlag | rightFlag);
++
++  /* Tab Diagonal Corners */
++  if (aDrawLeft)
++    DrawEdge (hdc, &lightRect, EDGE_RAISED, BF_SOFT | lightFlag);
++
++  if (aDrawRight)
++    DrawEdge (hdc, &shadeRect, EDGE_RAISED, BF_SOFT | shadeFlag);
++}
++
++static void
++get_notebook_tab_position (GtkNotebook *notebook,
++                           gboolean *start,
++                           gboolean *end)
++{
++  gboolean found_start = FALSE, found_end = FALSE;
++  gint i, n_pages;
++
++  /* default value */
++  *start = TRUE;
++  *end = FALSE;
++
++  n_pages = gtk_notebook_get_n_pages (notebook);
++  for (i = 0; i < n_pages; i++)
++    {
++      GtkWidget *tab_child;
++      GtkWidget *tab_label;
++      gboolean expand;
++      GtkPackType pack_type;
++      gboolean is_selected;
++
++      tab_child = gtk_notebook_get_nth_page (notebook, i);
++      is_selected = gtk_notebook_get_current_page (notebook) == i;
++
++      /* Skip invisible tabs */
++      tab_label = gtk_notebook_get_tab_label (notebook, tab_child);
++      if (!tab_label || !GTK_WIDGET_VISIBLE (tab_label))
++        continue;
++
++      /* Mimics what the notebook does internally. */
++      if (tab_label && !gtk_widget_get_child_visible (tab_label))
++        {
++          /* One child is hidden because scroll arrows are present.
++           * So both corners are rounded. */
++          *start = FALSE;
++          *end = FALSE;
++          return;
++        }
++
++      gtk_notebook_query_tab_label_packing (notebook, tab_child, &expand,
++                                            NULL, /* don't need fill */
++                                            &pack_type);
++
++      if (pack_type == GTK_PACK_START)
++        {
++          if (!found_start)
++            {
++              /* This is the first tab with PACK_START pack type */
++              found_start = TRUE;
++
++              if (is_selected)
++                {
++                  /* first PACK_START item is selected: set start to TRUE */
++                  *start = TRUE;
++
++                  if (expand && !found_end)
++                    {
++                      /* tentatively set end to TRUE: will be invalidated if we
++                       * find other items */
++                      *end = TRUE;
++                    }
++                }
++              else
++                {
++                  *start = FALSE;
++                }
++            }
++          else if (!found_end && !is_selected)
++            {
++              /* an unselected item exists, and no item with PACK_END pack type */
++              *end = FALSE;
++            }
++        }
++
++      if (pack_type == GTK_PACK_END)
++        {
++          if (!found_end)
++            {
++              /* This is the first tab with PACK_END pack type */
++              found_end = TRUE;
++
++              if (is_selected)
++                {
++                  /* first PACK_END item is selected: set end to TRUE */
++                  *end = TRUE;
++
++                  if (expand && !found_start)
++                    {
++                      /* tentatively set start to TRUE: will be invalidated if
++                       * we find other items */
++                      *start = TRUE;
++                    }
++                }
++              else
++                {
++                *end = FALSE;
++                }
++            }
++          else if (!found_start && !is_selected)
++            {
++              *start = FALSE;
++            }
++        }
++    }
++}
++
++static gboolean
++draw_themed_tab_button (GtkStyle *style,
++			GdkWindow *window,
++			GtkStateType state_type,
++			GtkNotebook *notebook,
++			gint x,
++			gint y,
++			gint width,
++			gint height,
++			gint gap_side)
++{
++  GdkPixmap *pixmap = NULL;
++  GdkRectangle draw_rect, clip_rect;
++  cairo_t *cr;
++  gboolean start, stop;
++  XpThemeElement element;
++  gint d_w, d_h;
++
++  get_notebook_tab_position (notebook, &start, &stop);
++
++  if (state_type == GTK_STATE_NORMAL)
++    {
++      if (start && stop)
++        {
++          /* Both edges of the notebook are covered by the item */
++          element = XP_THEME_ELEMENT_TAB_ITEM_BOTH_EDGE;
++        }
++      else if (start)
++        {
++          /* The start edge is covered by the item */
++          element = XP_THEME_ELEMENT_TAB_ITEM_LEFT_EDGE;
++        }
++      else if (stop)
++        {
++          /* the stop edge is reached by the item */
++          element = XP_THEME_ELEMENT_TAB_ITEM_RIGHT_EDGE;
++        }
++      else
++        {
++          /* no edge should be aligned with the tab */
++          element = XP_THEME_ELEMENT_TAB_ITEM;
++        }
++    }
++  else
++    {
++      /* Ideally, we should do the same here. Unfortunately, we don't have ways
++       * to determine what tab widget is actually being drawn here, so we can't
++       * determine its position relative to the borders */
++      element = XP_THEME_ELEMENT_TAB_ITEM;
++    }
++
++  draw_rect.x = x;
++  draw_rect.y = y;
++  draw_rect.width = width;
++  draw_rect.height = height;
++
++  /* Perform adjustments required to have the theme perfectly aligned */
++  if (state_type == GTK_STATE_ACTIVE)
++    {
++      switch (gap_side)
++        {
++        case GTK_POS_TOP:
++          draw_rect.x += 2;
++          draw_rect.width -= 2;
++          draw_rect.height -= 1;
++          break;
++        case GTK_POS_BOTTOM:
++          draw_rect.x += 2;
++          draw_rect.width -= 2;
++          draw_rect.y += 1;
++          draw_rect.height -= 1;
++          break;
++        case GTK_POS_LEFT:
++          draw_rect.y += 2;
++          draw_rect.height -= 2;
++          draw_rect.width -= 1;
++          break;
++        case GTK_POS_RIGHT:
++          draw_rect.y += 2;
++          draw_rect.height -= 2;
++          draw_rect.x += 1;
++          draw_rect.width -= 1;
++          break;
++        }
++    }
++  else
++    {
++      switch (gap_side)
++        {
++        case GTK_POS_TOP:
++          draw_rect.height += 1;
++          draw_rect.width += 2;
++          break;
++        case GTK_POS_BOTTOM:
++          draw_rect.y -= 1;
++          draw_rect.height += 1;
++          draw_rect.width += 2;
++          break;
++        case GTK_POS_LEFT:
++          draw_rect.width += 1;
++          draw_rect.height += 2;
++          break;
++        case GTK_POS_RIGHT:
++          draw_rect.x -= 1;
++          draw_rect.width += 1;
++          draw_rect.height += 2;
++          break;
++        }
++    }
++
++  clip_rect = draw_rect;
++
++  /* Take care of obvious case where the clipping is an empty region */
++  if (clip_rect.width <= 0 || clip_rect.height <= 0)
++    return TRUE;
++
++  /* Simple case: tabs on top are just drawn as is */
++  if (gap_side == GTK_POS_TOP)
++    {
++       return xp_theme_draw (window, element, style,
++	                     draw_rect.x, draw_rect.y,
++	                     draw_rect.width, draw_rect.height,
++	                     state_type, &clip_rect);
++    }
++
++  /* For other cases, we need to print the tab on a pixmap, and then rotate
++   * it according to the gap side */
++  if (gap_side == GTK_POS_LEFT || gap_side == GTK_POS_RIGHT)
++    {
++      /* pixmap will have width/height inverted as we'll rotate +- PI / 2 */
++      d_w = draw_rect.height;
++      d_h = draw_rect.width;
++    }
++  else
++    {
++      d_w = draw_rect.width;
++      d_h = draw_rect.height;
++    }
++
++  pixmap = gdk_pixmap_new (window, d_w, d_h, -1);
++
++  /* First copy the previously saved window background */
++  cr = gdk_cairo_create (pixmap);
++
++  /* pixmaps unfortunately don't handle the alpha channel. We then
++   * paint it first in white, hoping the actual background is clear */
++  cairo_set_source_rgb (cr, 1, 1, 1);
++  cairo_paint (cr);
++  cairo_destroy (cr);
++
++  if (!xp_theme_draw (pixmap, element, style, 0, 0, d_w, d_h, state_type, 0))
++    {
++      g_object_unref (pixmap);
++      return FALSE;
++    }
++
++  /* Now we have the pixmap, we need to flip/rotate it according to its
++   * final position. We'll do it using cairo on the dest window */
++  cr = gdk_cairo_create (window);
++  cairo_rectangle (cr, clip_rect.x, clip_rect.y,
++                   clip_rect.width, clip_rect.height);
++  cairo_clip (cr);
++  cairo_translate(cr, draw_rect.x + draw_rect.width * 0.5,
++                  draw_rect.y + draw_rect.height * 0.5);
++
++  if (gap_side == GTK_POS_LEFT || gap_side == GTK_POS_RIGHT) {
++    cairo_rotate (cr, G_PI/2.0);
++  }
++
++  if (gap_side == GTK_POS_LEFT || gap_side == GTK_POS_BOTTOM) {
++    cairo_scale (cr, 1, -1);
++  }
++
++  cairo_translate(cr, -d_w * 0.5, -d_h * 0.5);
++  gdk_cairo_set_source_pixmap (cr, pixmap, 0, 0);
++  cairo_paint (cr);
++  cairo_destroy (cr);
++
++  g_object_unref (pixmap);
++
++  return TRUE;
++}
++
++static gboolean
++draw_tab_button (GtkStyle *style,
++		 GdkWindow *window,
++		 GtkStateType state_type,
++		 GtkShadowType shadow_type,
++		 GdkRectangle *area,
++		 GtkWidget *widget,
++		 const gchar *detail,
++		 gint x, gint y, gint width, gint height, gint gap_side)
++{
++  if (gap_side == GTK_POS_TOP || gap_side == GTK_POS_BOTTOM)
++    {
++      /* experimental tab-drawing code from mozilla */
++      RECT rect;
++      XpDCInfo dc_info;
++      HDC dc;
++      gint32 aPosition;
++	  cairo_t *cr;
++
++      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++	  cr = gdk_cairo_create (window);
++
++      if (gap_side == GTK_POS_TOP)
++	aPosition = BF_TOP;
++      else if (gap_side == GTK_POS_BOTTOM)
++	aPosition = BF_BOTTOM;
++      else if (gap_side == GTK_POS_LEFT)
++	aPosition = BF_LEFT;
++      else
++	aPosition = BF_RIGHT;
++
++      if (state_type == GTK_STATE_PRELIGHT)
++	state_type = GTK_STATE_NORMAL;
++      if (area)
++        {
++           gdk_cairo_rectangle (cr, area);
++           cairo_clip (cr);
++           gdk_cairo_set_source_color (cr, &style->dark[state_type]);
++        }
++
++      DrawTab (dc, rect, aPosition,
++	       state_type != GTK_STATE_PRELIGHT,
++	       (gap_side != GTK_POS_LEFT), (gap_side != GTK_POS_RIGHT));
++
++      cairo_destroy (cr);
++
++      release_window_dc (&dc_info);
++      return TRUE;
++    }
++
++  return FALSE;
++}
++
++static void
++draw_extension (GtkStyle *style,
++		GdkWindow *window,
++		GtkStateType state_type,
++		GtkShadowType shadow_type,
++		GdkRectangle *area,
++		GtkWidget *widget,
++		const gchar *detail,
++		gint x, gint y,
++		gint width, gint height, GtkPositionType gap_side)
++{
++  if (widget && GTK_IS_NOTEBOOK (widget) && DETAIL("tab"))
++    {
++      GtkNotebook *notebook = GTK_NOTEBOOK (widget);
++
++      /* draw_themed_tab_button and draw_tab_button expect to work with tab
++       * position, instead of simply taking the "side of the gap" (gap_side).
++       * The gap side, simply said, is the side of the tab that touches the notebook
++       * frame and is always the exact opposite of the tab position... */
++      int tab_pos = gtk_notebook_get_tab_pos (notebook);
++
++      if (!draw_themed_tab_button (style, window, state_type,
++				   notebook, x, y,
++				   width, height, tab_pos))
++	{
++	  if (!draw_tab_button (style, window, state_type,
++				shadow_type, area, widget,
++				detail, x, y, width, height, tab_pos))
++	    {
++	      /* GtkStyle expects the usual gap_side */
++	      parent_class->draw_extension (style, window, state_type,
++					    shadow_type, area, widget, detail,
++					    x, y, width, height,
++					    gap_side);
++	    }
++	}
++    }
++}
++
++static void
++draw_box_gap (GtkStyle *style,
++              GdkWindow *window,
++              GtkStateType state_type,
++	      GtkShadowType shadow_type,
++	      GdkRectangle *area,
++	      GtkWidget *widget,
++	      const gchar *detail,
++	      gint x,
++	      gint y,
++	      gint width,
++	      gint height,
++	      GtkPositionType gap_side,
++	      gint gap_x,
++	      gint gap_width)
++{
++  if (GTK_IS_NOTEBOOK (widget) && DETAIL("notebook"))
++    {
++      GtkNotebook *notebook = GTK_NOTEBOOK (widget);
++
++      int side = gtk_notebook_get_tab_pos (notebook);
++      int x2 = x, y2 = y;
++      int w2 = width + style->xthickness, h2 = height + style->ythickness;
++
++      switch (side)
++        {
++        case GTK_POS_TOP:
++          y2 -= 1;
++          break;
++        case GTK_POS_BOTTOM:
++          break;
++        case GTK_POS_LEFT:
++          x2 -= 1;
++          break;
++        case GTK_POS_RIGHT:
++          w2 += 1;
++          break;
++        }
++
++      if (xp_theme_draw (window, XP_THEME_ELEMENT_TAB_PANE, style,
++			 x2, y2, w2, h2, state_type, area))
++	{
++	  return;
++	}
++    }
++
++  parent_class->draw_box_gap (style, window, state_type, shadow_type,
++			      area, widget, detail, x, y, width, height,
++			      gap_side, gap_x, gap_width);
++}
++
++static gboolean
++is_popup_window_child (GtkWidget *widget)
++{
++  GtkWidget *top;
++  GtkWindowType type = -1;
++
++  top = gtk_widget_get_toplevel (widget);
++
++  if (top && GTK_IS_WINDOW (top))
++    {
++      g_object_get (top, "type", &type, NULL);
++
++      if (type == GTK_WINDOW_POPUP)
++	{			/* Hack for combo boxes */
++	  return TRUE;
++	}
++    }
++
++  return FALSE;
++}
++
++static void
++draw_flat_box (GtkStyle *style, GdkWindow *window,
++	       GtkStateType state_type, GtkShadowType shadow_type,
++	       GdkRectangle *area, GtkWidget *widget,
++	       const gchar *detail, gint x, gint y, gint width, gint height)
++{
++  if (detail)
++    {
++      if (state_type == GTK_STATE_SELECTED &&
++	  (!strncmp ("cell_even", detail, 9) || !strncmp ("cell_odd", detail, 8)))
++	{
++          GdkColor *gc = gtk_widget_has_focus (widget) ? &style->base[state_type] : &style->base[GTK_STATE_ACTIVE];
++          cairo_t *cr = gdk_cairo_create (window);
++
++          _cairo_draw_rectangle (cr, gc, TRUE, x, y, width, height);
++
++		  cairo_destroy (cr);
++
++	  return;
++	}
++      else if (DETAIL("checkbutton"))
++	{
++	  if (state_type == GTK_STATE_PRELIGHT)
++	    {
++	      return;
++	    }
++	}
++    }
++
++  parent_class->draw_flat_box (style, window, state_type, shadow_type,
++			       area, widget, detail, x, y, width, height);
++}
++
++static gboolean
++draw_menu_border (GdkWindow *win, GtkStyle *style,
++		  gint x, gint y, gint width, gint height)
++{
++  RECT rect;
++  XpDCInfo dc_info;
++  HDC dc;
++
++  dc = get_window_dc (style, win, GTK_STATE_NORMAL, &dc_info, x, y, width, height, &rect);
++
++  if (!dc)
++    return FALSE;
++
++  if (xp_theme_is_active ())
++    {
++      FrameRect (dc, &rect, GetSysColorBrush (COLOR_3DSHADOW));
++    }
++  else
++    {
++      DrawEdge (dc, &rect, EDGE_RAISED, BF_RECT);
++    }
++
++  release_window_dc (&dc_info);
++
++  return TRUE;
++}
++
++static void
++draw_shadow (GtkStyle *style,
++	     GdkWindow *window,
++	     GtkStateType state_type,
++	     GtkShadowType shadow_type,
++	     GdkRectangle *area,
++	     GtkWidget *widget,
++	     const gchar *detail, gint x, gint y, gint width, gint height)
++{
++  gboolean is_handlebox;
++  gboolean is_toolbar;
++
++  if (DETAIL("frame"))
++    {
++
++      HDC dc;
++      RECT rect;
++      XpDCInfo dc_info;
++
++
++
++      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++      if (is_combo_box_child (widget))
++        {
++          FillRect (dc, &rect, GetSysColorBrush (COLOR_WINDOW));
++        }
++      else if (is_popup_window_child (widget))
++	{
++	  FrameRect (dc, &rect, GetSysColorBrush (COLOR_WINDOWFRAME));
++	}
++      else
++	{
++	  switch (shadow_type)
++	    {
++	    case GTK_SHADOW_IN:
++	      draw_3d_border (dc, &rect, TRUE);
++	      break;
++
++	    case GTK_SHADOW_OUT:
++	      draw_3d_border (dc, &rect, FALSE);
++	      break;
++
++	    case GTK_SHADOW_ETCHED_IN:
++	      draw_3d_border (dc, &rect, TRUE);
++	      InflateRect (&rect, -1, -1);
++	      draw_3d_border (dc, &rect, FALSE);
++	      break;
++
++	    case GTK_SHADOW_ETCHED_OUT:
++	      draw_3d_border (dc, &rect, FALSE);
++	      InflateRect (&rect, -1, -1);
++	      draw_3d_border (dc, &rect, TRUE);
++	      break;
++
++	    case GTK_SHADOW_NONE:
++	      break;
++	    }
++	}
++
++      release_window_dc (&dc_info);
++
++      return;
++    }
++  if (DETAIL("entry") || DETAIL("combobox"))
++    {
++      if (shadow_type != GTK_SHADOW_IN)
++	return;
++
++      if (!xp_theme_draw (window, XP_THEME_ELEMENT_EDIT_TEXT, style,
++			  x, y, width, height, state_type, area))
++	{
++	  HDC dc;
++	  RECT rect;
++	  XpDCInfo dc_info;
++
++	  dc = get_window_dc (style, window, state_type, &dc_info,
++			      x, y, width, height, &rect);
++
++	  DrawEdge (dc, &rect, EDGE_SUNKEN, BF_RECT);
++	  release_window_dc (&dc_info);
++	}
++
++      return;
++    }
++
++  if (DETAIL("scrolled_window") &&
++      xp_theme_draw (window, XP_THEME_ELEMENT_EDIT_TEXT, style,
++		     x, y, width, height, state_type, area))
++    {
++      return;
++    }
++
++  if (DETAIL("spinbutton"))
++    return;
++
++  if (DETAIL("menu"))
++    {
++      if (draw_menu_border (window, style, x, y, width, height))
++	{
++	  return;
++	}
++    }
++
++  if (DETAIL("handlebox"))
++    return;
++
++  is_handlebox = (DETAIL("handlebox_bin"));
++  is_toolbar = (DETAIL("toolbar") || DETAIL("menubar"));
++
++  if (is_toolbar || is_handlebox)
++    {
++      if (shadow_type == GTK_SHADOW_NONE)
++	{
++	  return;
++	}
++
++      if (widget)
++	{
++	  HDC dc;
++	  RECT rect;
++	  XpDCInfo dc_info;
++	  HGDIOBJ old_pen = NULL;
++	  GtkPositionType pos;
++
++	  sanitize_size (window, &width, &height);
++
++	  if (is_handlebox)
++	    {
++	      pos = gtk_handle_box_get_handle_position (GTK_HANDLE_BOX (widget));
++	      /*
++	         If the handle box is at left side,
++	         we shouldn't draw its right border.
++	         The same holds true for top, right, and bottom.
++	       */
++	      switch (pos)
++		{
++		case GTK_POS_LEFT:
++		  pos = GTK_POS_RIGHT;
++		  break;
++
++		case GTK_POS_RIGHT:
++		  pos = GTK_POS_LEFT;
++		  break;
++
++		case GTK_POS_TOP:
++		  pos = GTK_POS_BOTTOM;
++		  break;
++
++		case GTK_POS_BOTTOM:
++		  pos = GTK_POS_TOP;
++		  break;
++		}
++	    }
++	  else
++	    {
++	      GtkWidget *parent = gtk_widget_get_parent (widget);
++
++	      /* Dirty hack for toolbars contained in handle boxes */
++	      if (GTK_IS_HANDLE_BOX (parent))
++		{
++		  pos = gtk_handle_box_get_handle_position (GTK_HANDLE_BOX (parent));
++		}
++	      else
++		{
++		  /*
++		     Dirty hack:
++		     Make pos != all legal enum vaules of GtkPositionType.
++		     So every border will be draw.
++		   */
++		  pos = (GtkPositionType) - 1;
++		}
++	    }
++
++	  dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++	  if (pos != GTK_POS_LEFT)
++	    {
++	      old_pen = SelectObject (dc, get_light_pen ());
++	      MoveToEx (dc, rect.left, rect.top, NULL);
++	      LineTo (dc, rect.left, rect.bottom);
++	    }
++	  if (pos != GTK_POS_TOP)
++	    {
++	      old_pen = SelectObject (dc, get_light_pen ());
++	      MoveToEx (dc, rect.left, rect.top, NULL);
++	      LineTo (dc, rect.right, rect.top);
++	    }
++	  if (pos != GTK_POS_RIGHT)
++	    {
++	      old_pen = SelectObject (dc, get_dark_pen ());
++	      MoveToEx (dc, rect.right - 1, rect.top, NULL);
++	      LineTo (dc, rect.right - 1, rect.bottom);
++	    }
++	  if (pos != GTK_POS_BOTTOM)
++	    {
++	      old_pen = SelectObject (dc, get_dark_pen ());
++	      MoveToEx (dc, rect.left, rect.bottom - 1, NULL);
++	      LineTo (dc, rect.right, rect.bottom - 1);
++	    }
++	  if (old_pen)
++	    SelectObject (dc, old_pen);
++	  release_window_dc (&dc_info);
++	}
++
++      return;
++    }
++
++  if (DETAIL("statusbar"))
++    {
++      return;
++    }
++
++  parent_class->draw_shadow (style, window, state_type, shadow_type, area,
++			     widget, detail, x, y, width, height);
++}
++
++static void
++draw_hline (GtkStyle *style,
++	    GdkWindow *window,
++	    GtkStateType state_type,
++	    GdkRectangle *area,
++	    GtkWidget *widget,
++	    const gchar *detail, gint x1, gint x2, gint y)
++{
++  cairo_t *cr;
++  
++  cr = gdk_cairo_create (window);
++
++  if (xp_theme_is_active () && DETAIL("menuitem"))
++    {
++      gint cx, cy;
++      gint new_y, new_height;
++      gint y_offset;
++
++      xp_theme_get_element_dimensions (XP_THEME_ELEMENT_MENU_SEPARATOR,
++				       state_type,
++				       &cx, &cy);
++
++      /* Center the separator */
++      y_offset = (area->height / 2) - (cy / 2);
++      new_y = y_offset >= 0 ? area->y + y_offset : area->y;
++      new_height = cy;
++
++      if (xp_theme_draw
++	  (window, XP_THEME_ELEMENT_MENU_SEPARATOR, style, x1, new_y, x2, new_height,
++	   state_type, area))
++	{
++	  return;
++	}
++      else
++	{
++	  if (area)
++	    {
++              gdk_cairo_rectangle (cr, area);
++              cairo_clip (cr);
++	    }
++
++          _cairo_draw_line (cr, &style->dark[state_type], x1, y, x2, y);
++
++	}
++    }
++  else
++    {
++      if (style->ythickness == 2)
++	{
++	  if (area)
++	    {
++              gdk_cairo_rectangle (cr, area);
++              cairo_clip (cr);
++	    }
++
++          _cairo_draw_line (cr, &style->dark[state_type], x1, y, x2, y);
++	  ++y;
++          _cairo_draw_line (cr, &style->light[state_type], x1, y, x2, y);
++
++	}
++      else
++	{
++	  parent_class->draw_hline (style, window, state_type, area, widget,
++				    detail, x1, x2, y);
++	}
++    }
++  cairo_destroy (cr);
++}
++
++static void
++draw_vline (GtkStyle *style,
++	    GdkWindow *window,
++	    GtkStateType state_type,
++	    GdkRectangle *area,
++	    GtkWidget *widget,
++	    const gchar *detail, gint y1, gint y2, gint x)
++{
++  cairo_t *cr;
++  
++  cr = gdk_cairo_create (window);
++
++  if (style->xthickness == 2)
++    {
++      if (area)
++	{
++              gdk_cairo_rectangle (cr, area);
++              cairo_clip (cr);
++	}
++
++      _cairo_draw_line (cr, &style->dark[state_type], x, y1, x, y2);
++      ++x;
++      _cairo_draw_line (cr, &style->light[state_type], x, y1, x, y2);
++
++    }
++  else
++    {
++      parent_class->draw_vline (style, window, state_type, area, widget,
++				detail, y1, y2, x);
++    }
++
++  cairo_destroy (cr);
++}
++
++static void
++draw_slider (GtkStyle *style,
++	     GdkWindow *window,
++	     GtkStateType state_type,
++	     GtkShadowType shadow_type,
++	     GdkRectangle *area,
++	     GtkWidget *widget,
++	     const gchar *detail,
++	     gint x,
++	     gint y, gint width, gint height, GtkOrientation orientation)
++{
++  if (GTK_IS_SCALE (widget) &&
++      xp_theme_draw (window, ((orientation == GTK_ORIENTATION_VERTICAL) ?
++			      XP_THEME_ELEMENT_SCALE_SLIDER_V :
++			      XP_THEME_ELEMENT_SCALE_SLIDER_H), style, x, y, width,
++		     height, state_type, area))
++    {
++      return;
++    }
++
++  parent_class->draw_slider (style, window, state_type, shadow_type, area,
++			     widget, detail, x, y, width, height,
++			     orientation);
++}
++
++static void
++draw_resize_grip (GtkStyle *style,
++		  GdkWindow *window,
++		  GtkStateType state_type,
++		  GdkRectangle *area,
++		  GtkWidget *widget,
++		  const gchar *detail,
++		  GdkWindowEdge edge, gint x, gint y, gint width, gint height)
++{
++  cairo_t *cr;
++  
++  cr = gdk_cairo_create (window);
++  
++  if (DETAIL("statusbar"))
++    {
++      if (xp_theme_draw
++	  (window, XP_THEME_ELEMENT_STATUS_GRIPPER, style, x, y, width,
++	   height, state_type, area))
++	{
++          cairo_destroy (cr);
++	  return;
++	}
++      else
++	{
++	  RECT rect;
++	  XpDCInfo dc_info;
++	  HDC dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++	  if (area)
++            {
++              gdk_cairo_rectangle (cr, area);
++              cairo_clip (cr);
++              gdk_cairo_set_source_color (cr, &style->dark[state_type]);
++            }
++
++	  DrawFrameControl (dc, &rect, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
++	  release_window_dc (&dc_info);
++
++          cairo_destroy (cr);
++	  return;
++	}
++    }
++
++  parent_class->draw_resize_grip (style, window, state_type, area,
++				  widget, detail, edge, x, y, width, height);
++}
++
++static void
++draw_handle (GtkStyle      *style,
++             GdkWindow     *window,
++             GtkStateType   state_type,
++             GtkShadowType  shadow_type,
++             GdkRectangle  *area,
++             GtkWidget     *widget,
++             const gchar   *detail,
++             gint           x,
++             gint           y,
++             gint           width,
++             gint           height,
++             GtkOrientation orientation)
++{
++  if (is_toolbar_child (widget))
++    {
++      HDC dc;
++      RECT rect;
++      XpDCInfo dc_info;
++      XpThemeElement hndl;
++
++      sanitize_size (window, &width, &height);
++
++      if (GTK_IS_HANDLE_BOX (widget))
++	{
++	  GtkPositionType pos;
++	  pos = gtk_handle_box_get_handle_position (GTK_HANDLE_BOX (widget));
++
++	  if (pos == GTK_POS_TOP || pos == GTK_POS_BOTTOM)
++	      orientation = GTK_ORIENTATION_HORIZONTAL;
++	  else
++	      orientation = GTK_ORIENTATION_VERTICAL;
++	}
++
++      if (orientation == GTK_ORIENTATION_VERTICAL)
++	hndl = XP_THEME_ELEMENT_REBAR_GRIPPER_V;
++      else
++	hndl = XP_THEME_ELEMENT_REBAR_GRIPPER_H;
++
++      if (xp_theme_draw (window, hndl, style, x, y, width, height, state_type, area))
++	return;
++
++      dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++
++      if (orientation == GTK_ORIENTATION_VERTICAL)
++	{
++	  rect.left += 3;
++	  rect.right = rect.left + 3;
++	  rect.bottom -= 3;
++	  rect.top += 3;
++	}
++      else
++	{
++	  rect.top += 3;
++	  rect.bottom = rect.top + 3;
++	  rect.right -= 3;
++	  rect.left += 3;
++	}
++
++      draw_3d_border (dc, &rect, FALSE);
++      release_window_dc (&dc_info);
++      return;
++    }
++}
++
++static void
++draw_focus (GtkStyle *style,
++	    GdkWindow *window,
++	    GtkStateType state_type,
++	    GdkRectangle *area,
++	    GtkWidget *widget,
++	    const gchar *detail, gint x, gint y, gint width, gint height)
++{
++  HDC dc;
++  RECT rect;
++  XpDCInfo dc_info;
++
++  if (!gtk_widget_get_can_focus (widget))
++    {
++      return;
++    }
++
++  if (is_combo_box_child (widget)
++      && (GTK_IS_ARROW (widget) || GTK_IS_BUTTON (widget)))
++    {
++      return;
++    }
++  if (GTK_IS_TREE_VIEW (widget->parent)	/* list view bheader */
++      || GTK_IS_CLIST (widget->parent))
++    {
++      return;
++    }
++
++  dc = get_window_dc (style, window, state_type, &dc_info, x, y, width, height, &rect);
++  DrawFocusRect (dc, &rect);
++  release_window_dc (&dc_info);
++/*
++    parent_class->draw_focus (style, window, state_type,
++						     area, widget, detail, x, y, width, height);
++*/
++}
++
++static void
++draw_layout (GtkStyle *style,
++	     GdkWindow *window,
++	     GtkStateType state_type,
++	     gboolean use_text,
++	     GdkRectangle *area,
++	     GtkWidget *widget,
++	     const gchar *detail,
++	     gint old_x, gint old_y, PangoLayout *layout)
++{
++  GtkNotebook *notebook = NULL;
++  gint x = old_x;
++  gint y = old_y;
++
++  /* In the XP theme, labels don't appear correctly centered inside
++   * notebook tabs, so we give them a gentle nudge two pixels to the
++   * right.  A little hackish, but what are 'ya gonna do?  -- Cody
++   */
++  if (xp_theme_is_active () && DETAIL("label"))
++    {
++      if (widget->parent != NULL)
++	{
++	  if (GTK_IS_NOTEBOOK (widget->parent))
++	    {
++	      int side;
++	      notebook = GTK_NOTEBOOK (widget->parent);
++	      side = gtk_notebook_get_tab_pos (notebook);
++
++	      if (side == GTK_POS_TOP || side == GTK_POS_BOTTOM)
++		{
++		  x += 2;
++		}
++	    }
++	}
++    }
++
++  parent_class->draw_layout (style, window, state_type,
++			     use_text, area, widget, detail, x, y, layout);
++}
++
++static void
++msw_style_init_from_rc (GtkStyle *style, GtkRcStyle *rc_style)
++{
++  setup_system_font (style);
++  setup_menu_settings (gtk_settings_get_default ());
++  setup_system_styles (style);
++  parent_class->init_from_rc (style, rc_style);
++}
++
++static void
++msw_style_class_init (MswStyleClass *klass)
++{
++  GtkStyleClass *style_class = GTK_STYLE_CLASS (klass);
++
++  parent_class = g_type_class_peek_parent (klass);
++
++  style_class->init_from_rc = msw_style_init_from_rc;
++  style_class->draw_arrow = draw_arrow;
++  style_class->draw_box = draw_box;
++  style_class->draw_check = draw_check;
++  style_class->draw_option = draw_option;
++  style_class->draw_tab = draw_tab;
++  style_class->draw_flat_box = draw_flat_box;
++  style_class->draw_expander = draw_expander;
++  style_class->draw_extension = draw_extension;
++  style_class->draw_box_gap = draw_box_gap;
++  style_class->draw_shadow = draw_shadow;
++  style_class->draw_hline = draw_hline;
++  style_class->draw_vline = draw_vline;
++  style_class->draw_handle = draw_handle;
++  style_class->draw_resize_grip = draw_resize_grip;
++  style_class->draw_slider = draw_slider;
++  style_class->draw_focus = draw_focus;
++  style_class->draw_layout = draw_layout;
++}
++
++GType msw_type_style = 0;
++
++void
++msw_style_register_type (GTypeModule *module)
++{
++  const GTypeInfo object_info = {
++    sizeof (MswStyleClass),
++    (GBaseInitFunc) NULL,
++    (GBaseFinalizeFunc) NULL,
++    (GClassInitFunc) msw_style_class_init,
++    NULL,			/* class_finalize */
++    NULL,			/* class_data */
++    sizeof (MswStyle),
++    0,				/* n_preallocs */
++    (GInstanceInitFunc) NULL,
++  };
++
++  msw_type_style = g_type_module_register_type (module,
++						GTK_TYPE_STYLE,
++						"MswStyle", &object_info, 0);
++}
++
++void
++msw_style_init (void)
++{
++  xp_theme_init ();
++  msw_style_setup_system_settings ();
++  setup_msw_rc_style ();
++
++  if (g_light_pen)
++    {
++      DeleteObject (g_light_pen);
++      g_light_pen = NULL;
++    }
++
++  if (g_dark_pen)
++    {
++      DeleteObject (g_dark_pen);
++      g_dark_pen = NULL;
++    }
++}
++
++void
++msw_style_finalize (void)
++{
++  if (g_dither_brush)
++    {
++      DeleteObject (g_dither_brush);
++    }
++
++  if (g_light_pen)
++    {
++      DeleteObject (g_light_pen);
++    }
++
++  if (g_dark_pen)
++    {
++      DeleteObject (g_dark_pen);
++    }
++}
+
+--- a/gtk/msw_style.h	1970-01-01 01:00:00.000000000 +0100
++++ b/gtk/msw_style.h	2015-04-21 09:32:12.366529198 +0100
+@@ -0,0 +1,55 @@
++/* MS-Windows Engine (aka GTK-Wimp)
++ *
++ * Copyright (C) 2003, 2004 Raymond Penners <raymond@dotsphinx.com>
++ * Includes code adapted from redmond95 by Owen Taylor, and
++ * gtk-nativewin by Evan Martin
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Library General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ * License along with this library; if not, write to the
++ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ * Boston, MA 02111-1307, USA.
++ */
++
++#ifndef MSW_STYLE_H
++#define MSW_STYLE_H
++
++#include "gtk/gtk.h"
++
++typedef struct _MswStyle MswStyle;
++typedef struct _MswStyleClass MswStyleClass;
++
++extern GType msw_type_style;
++
++#define MSW_TYPE_STYLE              msw_type_style
++#define MSW_STYLE(object)           (G_TYPE_CHECK_INSTANCE_CAST ((object), MSW_TYPE_STYLE, MswStyle))
++#define MSW_STYLE_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), MSW_TYPE_STYLE, MswStyleClass))
++#define MSW_IS_STYLE(object)        (G_TYPE_CHECK_INSTANCE_TYPE ((object), MSW_TYPE_STYLE))
++#define MSW_IS_STYLE_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), MSW_TYPE_STYLE))
++#define MSW_STYLE_GET_CLASS(obj)    (G_TYPE_INSTANCE_GET_CLASS ((obj), MSW_TYPE_STYLE, MswStyleClass))
++
++struct _MswStyle
++{
++  GtkStyle parent_instance;
++};
++
++struct _MswStyleClass
++{
++  GtkStyleClass parent_class;
++};
++
++void msw_style_register_type (GTypeModule *module);
++void msw_style_init (void);
++void msw_style_finalize (void);
++void msw_style_setup_system_settings (void);
++
++#endif /* MSW_TYPE_STYLE */
+
+--- a/gtk/xp_theme.c	1970-01-01 01:00:00.000000000 +0100
++++ b/gtk/xp_theme.c	2015-04-21 09:32:12.366529198 +0100
+@@ -0,0 +1,1129 @@
++/* MS-Windows Engine (aka GTK-Wimp)
++ *
++ * Copyright (C) 2003, 2004 Raymond Penners <raymond@dotsphinx.com>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Library General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ * License along with this library; if not, write to the
++ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ * Boston, MA 02111-1307, USA.
++ */
++
++#define _WIN32_WINNT 0x0501
++
++#include "xp_theme.h"
++
++#ifdef HAVE_CONFIG_H
++#include "config.h"
++#endif
++
++#include <windows.h>
++#include <math.h>
++#include <string.h>
++#include <stdio.h>
++
++#ifdef BUILDING_STANDALONE
++#include "gdk/gdkwin32.h"
++#else
++#include "gdk/win32/gdkwin32.h"
++#endif
++
++#include "xp_theme_defs.h"
++
++#ifndef TMT_CAPTIONFONT
++
++/* These aren't in mingw's "w32api" headers, nor in the Platform SDK
++ * headers.
++ */
++#define TMT_CAPTIONFONT   801
++#define TMT_MENUFONT      803
++#define TMT_STATUSFONT    804
++#define TMT_MSGBOXFONT    805
++#endif
++
++#define GP_LINEHORZ       2
++#define GP_LINEVERT       3
++#define TP_SEPARATOR      5
++#define TP_SEPARATORVERT  6
++
++/* GLOBALS LINEHORZ states */
++#define LHS_FLAT          1
++#define LHS_RAISED        2
++#define LHS_SUNKEN        3
++
++/* GLOBAL LINEVERT states */
++#define LVS_FLAT          1
++#define LVS_RAISED        2
++#define LVS_SUNKEN        3
++
++/* TRACKBAR parts */
++#define TKP_TRACK         1
++#define TKP_TRACKVERT     2
++#define TKP_THUMB         3
++#define TKP_THUMBBOTTOM   4
++#define TKP_THUMBTOP      5
++#define TKP_THUMBVERT     6
++#define TKP_THUMBLEFT     7
++#define TKP_THUMBRIGHT    8
++#define TKP_TICS          9
++#define TKP_TICSVERT      10
++
++#define TRS_NORMAL        1
++
++#define MBI_NORMAL         1
++#define MBI_HOT            2
++#define MBI_PUSHED         3
++#define MBI_DISABLED       4
++#define MBI_DISABLEDHOT    5
++#define MBI_DISABLEDPUSHED 6
++
++#define MENU_POPUPGUTTER    13
++#define MENU_POPUPITEM      14
++#define MENU_POPUPSEPARATOR 15
++
++static const LPCWSTR class_descriptors[] = {
++  L"Scrollbar",			/* XP_THEME_CLASS_SCROLLBAR */
++  L"Button",			/* XP_THEME_CLASS_BUTTON */
++  L"Header",			/* XP_THEME_CLASS_HEADER */
++  L"ComboBox",			/* XP_THEME_CLASS_COMBOBOX */
++  L"Tab",			/* XP_THEME_CLASS_TAB */
++  L"Edit",			/* XP_THEME_CLASS_EDIT */
++  L"TreeView",			/* XP_THEME_CLASS_TREEVIEW */
++  L"Spin",			/* XP_THEME_CLASS_SPIN */
++  L"Progress",			/* XP_THEME_CLASS_PROGRESS */
++  L"Tooltip",			/* XP_THEME_CLASS_TOOLTIP */
++  L"Rebar",			/* XP_THEME_CLASS_REBAR */
++  L"Toolbar",			/* XP_THEME_CLASS_TOOLBAR */
++  L"Globals",			/* XP_THEME_CLASS_GLOBALS */
++  L"Menu",			/* XP_THEME_CLASS_MENU */
++  L"Window",			/* XP_THEME_CLASS_WINDOW */
++  L"Status",			/* XP_THEME_CLASS_STATUS */
++  L"Trackbar"			/* XP_THEME_CLASS_TRACKBAR */
++};
++
++static const short element_part_map[XP_THEME_ELEMENT__SIZEOF] = {
++  BP_CHECKBOX,
++  BP_CHECKBOX,
++  BP_CHECKBOX,
++  BP_PUSHBUTTON,
++  HP_HEADERITEM,
++  CP_DROPDOWNBUTTON,
++  TABP_BODY,
++  TABP_TABITEM,
++  TABP_TABITEMLEFTEDGE,
++  TABP_TABITEMRIGHTEDGE,
++  TABP_TABITEMBOTHEDGE,
++  TABP_PANE,
++  SBP_THUMBBTNHORZ,
++  SBP_THUMBBTNVERT,
++  SBP_ARROWBTN,
++  SBP_ARROWBTN,
++  SBP_ARROWBTN,
++  SBP_ARROWBTN,
++  SBP_GRIPPERHORZ,
++  SBP_GRIPPERVERT,
++  SBP_LOWERTRACKHORZ,
++  SBP_LOWERTRACKVERT,
++  EP_EDITTEXT,
++  BP_PUSHBUTTON,
++  SPNP_UP,
++  SPNP_DOWN,
++  BP_RADIOBUTTON,
++  BP_RADIOBUTTON,
++  TVP_GLYPH,
++  TVP_GLYPH,
++  PP_CHUNK,
++  PP_CHUNKVERT,
++  PP_BAR,
++  PP_BARVERT,
++  TTP_STANDARD,
++  0 /* RP_BAND */ ,
++  RP_GRIPPER,
++  RP_GRIPPERVERT,
++  RP_CHEVRON,
++  TP_BUTTON,
++  MENU_POPUPITEM, /*MP_MENUITEM,*/
++  MENU_POPUPSEPARATOR,  /*MP_SEPARATOR,*/
++  SP_GRIPPER,
++  SP_PANE,
++  GP_LINEHORZ,
++  GP_LINEVERT,
++  TP_SEPARATOR,
++  TP_SEPARATORVERT,
++  TKP_TRACK,
++  TKP_TRACKVERT,
++  TKP_THUMB,
++  TKP_THUMBVERT,
++  TKP_TICS,
++  TKP_TICSVERT
++};
++
++#define UXTHEME_DLL "uxtheme.dll"
++
++static HINSTANCE uxtheme_dll = NULL;
++static HTHEME open_themes[XP_THEME_CLASS__SIZEOF];
++static gboolean use_xp_theme = FALSE;
++
++typedef HRESULT (FAR PASCAL *GetThemeSysFontFunc)           (HTHEME hTheme, int iFontID, OUT LOGFONTW *plf);
++typedef int (FAR PASCAL *GetThemeSysSizeFunc)               (HTHEME hTheme, int iSizeId);
++typedef COLORREF (FAR PASCAL *GetThemeSysColorFunc)         (HTHEME hTheme,
++							     int iColorID);
++typedef HTHEME (FAR PASCAL *OpenThemeDataFunc)              (HWND hwnd,
++							     LPCWSTR pszClassList);
++typedef HRESULT (FAR PASCAL *CloseThemeDataFunc)            (HTHEME theme);
++typedef HRESULT (FAR PASCAL *DrawThemeBackgroundFunc)       (HTHEME hTheme, HDC hdc, int iPartId, int iStateId,
++							     const RECT *pRect, const RECT *pClipRect);
++typedef HRESULT (FAR PASCAL *EnableThemeDialogTextureFunc)  (HWND hwnd,
++							     DWORD dwFlags);
++typedef BOOL (FAR PASCAL *IsThemeActiveFunc)                (VOID);
++typedef BOOL (FAR PASCAL *IsAppThemedFunc)                  (VOID);
++typedef BOOL (FAR PASCAL *IsThemeBackgroundPartiallyTransparentFunc) (HTHEME hTheme,
++								      int iPartId,
++								      int iStateId);
++typedef HRESULT (FAR PASCAL *DrawThemeParentBackgroundFunc) (HWND hwnd,
++							     HDC hdc,
++							     RECT *prc);
++typedef HRESULT (FAR PASCAL *GetThemePartSizeFunc)          (HTHEME hTheme,
++							     HDC hdc,
++							     int iPartId,
++							     int iStateId,
++							     RECT *prc,
++							     int eSize,
++							     SIZE *psz);
++
++static GetThemeSysFontFunc get_theme_sys_font_func = NULL;
++static GetThemeSysColorFunc get_theme_sys_color_func = NULL;
++static GetThemeSysSizeFunc get_theme_sys_metric_func = NULL;
++static OpenThemeDataFunc open_theme_data_func = NULL;
++static CloseThemeDataFunc close_theme_data_func = NULL;
++static DrawThemeBackgroundFunc draw_theme_background_func = NULL;
++static EnableThemeDialogTextureFunc enable_theme_dialog_texture_func = NULL;
++static IsThemeActiveFunc is_theme_active_func = NULL;
++static IsAppThemedFunc is_app_themed_func = NULL;
++static IsThemeBackgroundPartiallyTransparentFunc is_theme_partially_transparent_func = NULL;
++static DrawThemeParentBackgroundFunc draw_theme_parent_background_func = NULL;
++static GetThemePartSizeFunc get_theme_part_size_func = NULL;
++
++static void
++xp_theme_close_open_handles (void)
++{
++  int i;
++
++  for (i = 0; i < XP_THEME_CLASS__SIZEOF; i++)
++    {
++      if (open_themes[i])
++	{
++	  close_theme_data_func (open_themes[i]);
++	  open_themes[i] = NULL;
++	}
++    }
++}
++
++void
++xp_theme_init (void)
++{
++  char *buf;
++  char dummy;
++  int n, k;
++
++  if (uxtheme_dll)
++    return;
++
++  memset (open_themes, 0, sizeof (open_themes));
++
++  n = GetSystemDirectory (&dummy, 0);
++
++  if (n <= 0)
++    return;
++
++  buf = g_malloc (n + 1 + strlen (UXTHEME_DLL));
++  k = GetSystemDirectory (buf, n);
++  
++  if (k == 0 || k > n)
++    {
++      g_free (buf);
++      return;
++    }
++
++  if (!G_IS_DIR_SEPARATOR (buf[strlen (buf) -1]))
++    strcat (buf, G_DIR_SEPARATOR_S);
++  strcat (buf, UXTHEME_DLL);
++
++  uxtheme_dll = LoadLibrary (buf);
++  g_free (buf);
++
++  if (!uxtheme_dll)
++    return;
++
++  is_app_themed_func = (IsAppThemedFunc) GetProcAddress (uxtheme_dll, "IsAppThemed");
++
++  if (is_app_themed_func)
++    {
++      is_theme_active_func = (IsThemeActiveFunc) GetProcAddress (uxtheme_dll, "IsThemeActive");
++      open_theme_data_func = (OpenThemeDataFunc) GetProcAddress (uxtheme_dll, "OpenThemeData");
++      close_theme_data_func = (CloseThemeDataFunc) GetProcAddress (uxtheme_dll, "CloseThemeData");
++      draw_theme_background_func = (DrawThemeBackgroundFunc) GetProcAddress (uxtheme_dll, "DrawThemeBackground");
++      enable_theme_dialog_texture_func = (EnableThemeDialogTextureFunc) GetProcAddress (uxtheme_dll, "EnableThemeDialogTexture");
++      get_theme_sys_font_func = (GetThemeSysFontFunc) GetProcAddress (uxtheme_dll, "GetThemeSysFont");
++      get_theme_sys_color_func = (GetThemeSysColorFunc) GetProcAddress (uxtheme_dll, "GetThemeSysColor");
++      get_theme_sys_metric_func = (GetThemeSysSizeFunc) GetProcAddress (uxtheme_dll, "GetThemeSysSize");
++      is_theme_partially_transparent_func = (IsThemeBackgroundPartiallyTransparentFunc) GetProcAddress (uxtheme_dll, "IsThemeBackgroundPartiallyTransparent");
++      draw_theme_parent_background_func = (DrawThemeParentBackgroundFunc) GetProcAddress (uxtheme_dll, "DrawThemeParentBackground");
++      get_theme_part_size_func = (GetThemePartSizeFunc) GetProcAddress (uxtheme_dll, "GetThemePartSize");
++    }
++
++  if (is_app_themed_func && is_theme_active_func)
++    {
++      use_xp_theme = (is_app_themed_func () && is_theme_active_func ());
++    }
++  else
++    {
++      use_xp_theme = FALSE;
++    }
++}
++
++void
++xp_theme_reset (void)
++{
++  xp_theme_close_open_handles ();
++
++  if (is_app_themed_func && is_theme_active_func)
++    {
++      use_xp_theme = (is_app_themed_func () && is_theme_active_func ());
++    }
++  else
++    {
++      use_xp_theme = FALSE;
++    }
++}
++
++void
++xp_theme_exit (void)
++{
++  if (!uxtheme_dll)
++    return;
++
++  xp_theme_close_open_handles ();
++
++  FreeLibrary (uxtheme_dll);
++  uxtheme_dll = NULL;
++  use_xp_theme = FALSE;
++
++  is_app_themed_func = NULL;
++  is_theme_active_func = NULL;
++  open_theme_data_func = NULL;
++  close_theme_data_func = NULL;
++  draw_theme_background_func = NULL;
++  enable_theme_dialog_texture_func = NULL;
++  get_theme_sys_font_func = NULL;
++  get_theme_sys_color_func = NULL;
++  get_theme_sys_metric_func = NULL;
++  is_theme_partially_transparent_func = NULL;
++  draw_theme_parent_background_func = NULL;
++  get_theme_part_size_func = NULL;
++}
++
++static HTHEME
++xp_theme_get_handle_by_class (XpThemeClass klazz)
++{
++  if (!open_themes[klazz] && open_theme_data_func)
++    {
++      open_themes[klazz] = open_theme_data_func (NULL, class_descriptors[klazz]);
++    }
++
++  return open_themes[klazz];
++}
++
++static HTHEME
++xp_theme_get_handle_by_element (XpThemeElement element)
++{
++  HTHEME ret = NULL;
++  XpThemeClass klazz = XP_THEME_CLASS__SIZEOF;
++
++  switch (element)
++    {
++    case XP_THEME_ELEMENT_TOOLTIP:
++      klazz = XP_THEME_CLASS_TOOLTIP;
++      break;
++
++    case XP_THEME_ELEMENT_REBAR:
++    case XP_THEME_ELEMENT_REBAR_GRIPPER_H:
++    case XP_THEME_ELEMENT_REBAR_GRIPPER_V:
++    case XP_THEME_ELEMENT_REBAR_CHEVRON:
++      klazz = XP_THEME_CLASS_REBAR;
++      break;
++
++    case XP_THEME_ELEMENT_SCALE_TROUGH_H:
++    case XP_THEME_ELEMENT_SCALE_TROUGH_V:
++    case XP_THEME_ELEMENT_SCALE_SLIDER_H:
++    case XP_THEME_ELEMENT_SCALE_SLIDER_V:
++    case XP_THEME_ELEMENT_SCALE_TICS_H:
++    case XP_THEME_ELEMENT_SCALE_TICS_V:
++      klazz = XP_THEME_CLASS_TRACKBAR;
++      break;
++
++    case XP_THEME_ELEMENT_STATUS_GRIPPER:
++    case XP_THEME_ELEMENT_STATUS_PANE:
++      klazz = XP_THEME_CLASS_STATUS;
++      break;
++
++    case XP_THEME_ELEMENT_TOOLBAR_BUTTON:
++    case XP_THEME_ELEMENT_TOOLBAR_SEPARATOR_H:
++    case XP_THEME_ELEMENT_TOOLBAR_SEPARATOR_V:
++      klazz = XP_THEME_CLASS_TOOLBAR;
++      break;
++
++    case XP_THEME_ELEMENT_MENU_ITEM:
++    case XP_THEME_ELEMENT_MENU_SEPARATOR:
++      klazz = XP_THEME_CLASS_MENU;
++      break;
++
++    case XP_THEME_ELEMENT_PRESSED_CHECKBOX:
++    case XP_THEME_ELEMENT_INCONSISTENT_CHECKBOX:
++    case XP_THEME_ELEMENT_CHECKBOX:
++    case XP_THEME_ELEMENT_BUTTON:
++    case XP_THEME_ELEMENT_DEFAULT_BUTTON:
++    case XP_THEME_ELEMENT_PRESSED_RADIO_BUTTON:
++    case XP_THEME_ELEMENT_RADIO_BUTTON:
++      klazz = XP_THEME_CLASS_BUTTON;
++      break;
++
++    case XP_THEME_ELEMENT_LIST_HEADER:
++      klazz = XP_THEME_CLASS_HEADER;
++      break;
++
++    case XP_THEME_ELEMENT_COMBOBUTTON:
++      klazz = XP_THEME_CLASS_COMBOBOX;
++      break;
++
++    case XP_THEME_ELEMENT_BODY:
++    case XP_THEME_ELEMENT_TAB_ITEM:
++    case XP_THEME_ELEMENT_TAB_ITEM_LEFT_EDGE:
++    case XP_THEME_ELEMENT_TAB_ITEM_RIGHT_EDGE:
++    case XP_THEME_ELEMENT_TAB_ITEM_BOTH_EDGE:
++    case XP_THEME_ELEMENT_TAB_PANE:
++      klazz = XP_THEME_CLASS_TAB;
++      break;
++
++    case XP_THEME_ELEMENT_SCROLLBAR_V:
++    case XP_THEME_ELEMENT_SCROLLBAR_H:
++    case XP_THEME_ELEMENT_ARROW_UP:
++    case XP_THEME_ELEMENT_ARROW_DOWN:
++    case XP_THEME_ELEMENT_ARROW_LEFT:
++    case XP_THEME_ELEMENT_ARROW_RIGHT:
++    case XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_V:
++    case XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_H:
++    case XP_THEME_ELEMENT_TROUGH_V:
++    case XP_THEME_ELEMENT_TROUGH_H:
++      klazz = XP_THEME_CLASS_SCROLLBAR;
++      break;
++
++    case XP_THEME_ELEMENT_EDIT_TEXT:
++      klazz = XP_THEME_CLASS_EDIT;
++      break;
++
++    case XP_THEME_ELEMENT_SPIN_BUTTON_UP:
++    case XP_THEME_ELEMENT_SPIN_BUTTON_DOWN:
++      klazz = XP_THEME_CLASS_SPIN;
++      break;
++
++    case XP_THEME_ELEMENT_PROGRESS_BAR_H:
++    case XP_THEME_ELEMENT_PROGRESS_BAR_V:
++    case XP_THEME_ELEMENT_PROGRESS_TROUGH_H:
++    case XP_THEME_ELEMENT_PROGRESS_TROUGH_V:
++      klazz = XP_THEME_CLASS_PROGRESS;
++      break;
++
++    case XP_THEME_ELEMENT_TREEVIEW_EXPANDER_OPENED:
++    case XP_THEME_ELEMENT_TREEVIEW_EXPANDER_CLOSED:
++      klazz = XP_THEME_CLASS_TREEVIEW;
++      break;
++
++    case XP_THEME_ELEMENT_LINE_H:
++    case XP_THEME_ELEMENT_LINE_V:
++      klazz = XP_THEME_CLASS_GLOBALS;
++      break;
++
++    default:
++      break;
++    }
++
++  if (klazz != XP_THEME_CLASS__SIZEOF)
++    {
++      ret = xp_theme_get_handle_by_class (klazz);
++    }
++
++  return ret;
++}
++
++static int
++xp_theme_map_gtk_state (XpThemeElement element, GtkStateType state)
++{
++  int ret = 0;
++
++  switch (element)
++    {
++    case XP_THEME_ELEMENT_TOOLTIP:
++      ret = TTSS_NORMAL;
++      break;
++
++    case XP_THEME_ELEMENT_REBAR:
++      ret = 0;
++      break;
++
++    case XP_THEME_ELEMENT_REBAR_GRIPPER_H:
++    case XP_THEME_ELEMENT_REBAR_GRIPPER_V:
++      ret = 0;
++      break;
++
++    case XP_THEME_ELEMENT_STATUS_GRIPPER:
++    case XP_THEME_ELEMENT_STATUS_PANE:
++      ret = 1;
++      break;
++
++    case XP_THEME_ELEMENT_REBAR_CHEVRON:
++      switch (state)
++	{
++	case GTK_STATE_PRELIGHT:
++	  ret = CHEVS_HOT;
++	  break;
++
++	case GTK_STATE_SELECTED:
++	case GTK_STATE_ACTIVE:
++	  ret = CHEVS_PRESSED;
++	  break;
++
++	default:
++	  ret = CHEVS_NORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_TOOLBAR_SEPARATOR_H:
++    case XP_THEME_ELEMENT_TOOLBAR_SEPARATOR_V:
++      ret = TS_NORMAL;
++      break;
++
++    case XP_THEME_ELEMENT_TOOLBAR_BUTTON:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = TS_PRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = TS_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = TS_DISABLED;
++	  break;
++
++	default:
++	  ret = TS_NORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_TAB_PANE:
++      ret = 1;
++      break;
++
++    case XP_THEME_ELEMENT_TAB_ITEM_LEFT_EDGE:
++    case XP_THEME_ELEMENT_TAB_ITEM_RIGHT_EDGE:
++    case XP_THEME_ELEMENT_TAB_ITEM_BOTH_EDGE:
++    case XP_THEME_ELEMENT_TAB_ITEM:
++      switch (state)
++	{
++	case GTK_STATE_PRELIGHT:
++	  ret = TIS_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = TIS_DISABLED;
++	  break;
++
++	case GTK_STATE_SELECTED:
++	case GTK_STATE_ACTIVE:
++	  ret = TIS_NORMAL;
++	  break;
++
++	default:
++	  ret = TIS_SELECTED;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_EDIT_TEXT:
++      switch (state)
++	{
++	case GTK_STATE_PRELIGHT:
++	  ret = ETS_FOCUSED;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = ETS_READONLY;
++	  break;
++
++	case GTK_STATE_SELECTED:
++	case GTK_STATE_ACTIVE:
++	default:
++	  ret = ETS_NORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_TROUGH_H:
++    case XP_THEME_ELEMENT_TROUGH_V:
++      ret = SCRBS_NORMAL;
++      break;
++
++    case XP_THEME_ELEMENT_SCROLLBAR_H:
++    case XP_THEME_ELEMENT_SCROLLBAR_V:
++      switch (state)
++	{
++	case GTK_STATE_SELECTED:
++	case GTK_STATE_ACTIVE:
++	  ret = SCRBS_PRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = SCRBS_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = SCRBS_DISABLED;
++	  break;
++
++	default:
++	  ret = SCRBS_NORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_ARROW_DOWN:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = ABS_DOWNPRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = ABS_DOWNHOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = ABS_DOWNDISABLED;
++	  break;
++
++	default:
++	  ret = ABS_DOWNNORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_ARROW_UP:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = ABS_UPPRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = ABS_UPHOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = ABS_UPDISABLED;
++	  break;
++
++	default:
++	  ret = ABS_UPNORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_ARROW_LEFT:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = ABS_LEFTPRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = ABS_LEFTHOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = ABS_LEFTDISABLED;
++	  break;
++
++	default:
++	  ret = ABS_LEFTNORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_ARROW_RIGHT:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = ABS_RIGHTPRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = ABS_RIGHTHOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = ABS_RIGHTDISABLED;
++	  break;
++
++	default:
++	  ret = ABS_RIGHTNORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_CHECKBOX:
++    case XP_THEME_ELEMENT_RADIO_BUTTON:
++      switch (state)
++	{
++	case GTK_STATE_SELECTED:
++	  ret = CBS_UNCHECKEDPRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = CBS_UNCHECKEDHOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = CBS_UNCHECKEDDISABLED;
++	  break;
++
++	default:
++	  ret = CBS_UNCHECKEDNORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_INCONSISTENT_CHECKBOX:
++      switch (state)
++	{
++	case GTK_STATE_SELECTED:
++	  ret = CBS_MIXEDPRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = CBS_MIXEDHOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = CBS_MIXEDDISABLED;
++	  break;
++
++	default:
++	  ret = CBS_MIXEDNORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_PRESSED_CHECKBOX:
++    case XP_THEME_ELEMENT_PRESSED_RADIO_BUTTON:
++      switch (state)
++	{
++	case GTK_STATE_SELECTED:
++	  ret = CBS_CHECKEDPRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = CBS_CHECKEDHOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = CBS_CHECKEDDISABLED;
++	  break;
++
++	default:
++	  ret = CBS_CHECKEDNORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_DEFAULT_BUTTON:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = PBS_PRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = PBS_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = PBS_DISABLED;
++	  break;
++
++	default:
++	  ret = PBS_DEFAULTED;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_SPIN_BUTTON_DOWN:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = DNS_PRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = DNS_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = DNS_DISABLED;
++	  break;
++
++	default:
++	  ret = DNS_NORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_SPIN_BUTTON_UP:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = UPS_PRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = UPS_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = UPS_DISABLED;
++	  break;
++
++	default:
++	  ret = UPS_NORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_TREEVIEW_EXPANDER_OPENED:
++      ret = GLPS_OPENED;
++      break;
++
++    case XP_THEME_ELEMENT_TREEVIEW_EXPANDER_CLOSED:
++      ret = GLPS_CLOSED;
++      break;
++
++    case XP_THEME_ELEMENT_PROGRESS_BAR_H:
++    case XP_THEME_ELEMENT_PROGRESS_BAR_V:
++    case XP_THEME_ELEMENT_PROGRESS_TROUGH_H:
++    case XP_THEME_ELEMENT_PROGRESS_TROUGH_V:
++      ret = 1;
++      break;
++
++    case XP_THEME_ELEMENT_MENU_SEPARATOR:
++      ret = TS_NORMAL;
++      break;
++
++    case XP_THEME_ELEMENT_MENU_ITEM:
++      switch (state)
++	{
++	case GTK_STATE_SELECTED:
++	  ret = MS_SELECTED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = MBI_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = MBI_DISABLED;
++	  break;
++
++	default:
++	  ret = MBI_NORMAL;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_LINE_H:
++      switch (state)
++	{
++	  /* LHS_FLAT, LHS_RAISED, LHS_SUNKEN */
++	  ret = LHS_RAISED;
++	  break;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_LINE_V:
++      switch (state)
++	{
++	  /* LVS_FLAT, LVS_RAISED, LVS_SUNKEN */
++	  ret = LVS_RAISED;
++	  break;
++	}
++      break;
++
++    case XP_THEME_ELEMENT_SCALE_TROUGH_H:
++    case XP_THEME_ELEMENT_SCALE_TROUGH_V:
++      ret = TRS_NORMAL;
++      break;
++
++    default:
++      switch (state)
++	{
++	case GTK_STATE_ACTIVE:
++	  ret = PBS_PRESSED;
++	  break;
++
++	case GTK_STATE_PRELIGHT:
++	  ret = PBS_HOT;
++	  break;
++
++	case GTK_STATE_INSENSITIVE:
++	  ret = PBS_DISABLED;
++	  break;
++
++	default:
++	  ret = PBS_NORMAL;
++	}
++    }
++
++  return ret;
++}
++
++HDC
++get_window_dc (GtkStyle *style,
++	       GdkWindow *window,
++	       GtkStateType state_type,
++	       XpDCInfo *dc_info_out,
++	       gint x, gint y, gint width, gint height,
++	       RECT *rect_out)
++{
++  GdkDrawable *drawable = NULL;
++  GdkGC *gc = style->dark_gc[state_type];
++  gint x_offset, y_offset;
++  
++  dc_info_out->data = NULL;
++  
++  drawable = gdk_win32_begin_direct_draw_libgtk_only (window,
++						      gc, &dc_info_out->data,
++						      &x_offset, &y_offset);
++  if (!drawable)
++    return NULL;
++
++  rect_out->left = x - x_offset;
++  rect_out->top = y - y_offset;
++  rect_out->right = rect_out->left + width;
++  rect_out->bottom = rect_out->top + height;
++  
++  dc_info_out->drawable = drawable;
++  dc_info_out->gc = gc;
++  dc_info_out->x_offset = x_offset;
++  dc_info_out->y_offset = y_offset;
++  
++  return gdk_win32_hdc_get (drawable, gc, 0);
++}
++
++void
++release_window_dc (XpDCInfo *dc_info)
++{
++  gdk_win32_hdc_release (dc_info->drawable, dc_info->gc, 0);
++
++  gdk_win32_end_direct_draw_libgtk_only (dc_info->data);
++}
++
++gboolean
++xp_theme_draw (GdkWindow *win, XpThemeElement element, GtkStyle *style,
++	       int x, int y, int width, int height,
++	       GtkStateType state_type, GdkRectangle *area)
++{
++  HTHEME theme;
++  RECT rect, clip, *pClip;
++  HDC dc;
++  XpDCInfo dc_info;
++  int part_state;
++  HWND hwnd;
++
++  if (!xp_theme_is_drawable (element))
++    return FALSE;
++
++  theme = xp_theme_get_handle_by_element (element);
++  if (!theme)
++    return FALSE;
++
++  /* FIXME: Recheck its function */
++  hwnd = gdk_win32_window_get_impl_hwnd (win);
++  if (hwnd != NULL)
++    enable_theme_dialog_texture_func (hwnd, ETDT_ENABLETAB);
++
++  dc = get_window_dc (style, win, state_type, &dc_info,
++		      x, y, width, height,
++		      &rect);
++  if (!dc)
++    return FALSE;
++
++  if (area)
++    {
++      clip.left = area->x - dc_info.x_offset;
++      clip.top = area->y - dc_info.y_offset;
++      clip.right = clip.left + area->width;
++      clip.bottom = clip.top + area->height;
++
++      pClip = &clip;
++    }
++  else
++    {
++      pClip = NULL;
++    }
++
++  part_state = xp_theme_map_gtk_state (element, state_type);
++
++  /* Support transparency */
++  if (is_theme_partially_transparent_func (theme, element_part_map[element], part_state))
++    draw_theme_parent_background_func (hwnd, dc, pClip);
++
++  draw_theme_background_func (theme, dc, element_part_map[element],
++			      part_state, &rect, pClip);
++
++  release_window_dc (&dc_info);
++
++  return TRUE;
++}
++
++gboolean
++xp_theme_is_active (void)
++{
++  return use_xp_theme;
++}
++
++gboolean
++xp_theme_is_drawable (XpThemeElement element)
++{
++  if (xp_theme_is_active ())
++    return (xp_theme_get_handle_by_element (element) != NULL);
++
++  return FALSE;
++}
++
++gboolean
++xp_theme_get_element_dimensions (XpThemeElement element,
++				 GtkStateType state_type,
++				 gint *cx, gint *cy)
++{
++  HTHEME theme;
++  SIZE part_size;
++  int part_state;
++
++  if (!xp_theme_is_active ())
++    return FALSE;
++
++  theme = xp_theme_get_handle_by_element (element);
++  if (!theme)
++    return FALSE;
++
++  part_state = xp_theme_map_gtk_state (element, state_type);
++
++  get_theme_part_size_func (theme,
++			    NULL,
++			    element_part_map[element],
++			    part_state,
++			    NULL,
++			    TS_MIN,
++			    &part_size);
++
++  *cx = part_size.cx;
++  *cy = part_size.cy;
++
++  if (element == XP_THEME_ELEMENT_MENU_ITEM ||
++      element == XP_THEME_ELEMENT_MENU_SEPARATOR)
++  {
++    SIZE gutter_size;
++
++    get_theme_part_size_func (theme,
++			      NULL,
++			      MENU_POPUPGUTTER,
++			      0,
++			      NULL,
++			      TS_MIN,
++			      &gutter_size);
++
++	*cx += gutter_size.cx * 2;
++	*cy += gutter_size.cy * 2;
++  }
++
++  return TRUE;
++}
++
++gboolean
++xp_theme_get_system_font (XpThemeClass klazz, XpThemeFont fontId,
++			  OUT LOGFONTW *lf)
++{
++  if (xp_theme_is_active () && get_theme_sys_font_func != NULL)
++    {
++      HTHEME theme = xp_theme_get_handle_by_class (klazz);
++      int themeFont;
++
++      if (!theme)
++	return FALSE;
++
++      switch (fontId)
++	{
++	case XP_THEME_FONT_CAPTION:
++	  themeFont = TMT_CAPTIONFONT;
++	  break;
++
++	case XP_THEME_FONT_MENU:
++	  themeFont = TMT_MENUFONT;
++	  break;
++
++	case XP_THEME_FONT_STATUS:
++	  themeFont = TMT_STATUSFONT;
++	  break;
++
++	case XP_THEME_FONT_MESSAGE:
++	default:
++	  themeFont = TMT_MSGBOXFONT;
++	  break;
++	}
++
++      /* if theme is NULL, it will just return the GetSystemFont()
++         value */
++      return ((*get_theme_sys_font_func) (theme, themeFont, lf) == S_OK);
++    }
++
++  return FALSE;
++}
++
++gboolean
++xp_theme_get_system_color (XpThemeClass klazz, int colorId,
++			   OUT DWORD *pColor)
++{
++  if (xp_theme_is_active () && get_theme_sys_color_func != NULL)
++    {
++      HTHEME theme = xp_theme_get_handle_by_class (klazz);
++
++      /* if theme is NULL, it will just return the GetSystemColor()
++         value */
++      *pColor = (*get_theme_sys_color_func) (theme, colorId);
++      return TRUE;
++    }
++
++  return FALSE;
++}
++
++gboolean
++xp_theme_get_system_metric (XpThemeClass klazz, int metricId, OUT int *pVal)
++{
++  if (xp_theme_is_active () && get_theme_sys_metric_func != NULL)
++    {
++      HTHEME theme = xp_theme_get_handle_by_class (klazz);
++
++      /* if theme is NULL, it will just return the GetSystemMetrics()
++         value */
++      *pVal = (*get_theme_sys_metric_func) (theme, metricId);
++      return TRUE;
++    }
++
++  return FALSE;
++}
+
+--- a/gtk/xp_theme.h	1970-01-01 01:00:00.000000000 +0100
++++ b/gtk/xp_theme.h	2015-04-21 09:32:12.366529198 +0100
+@@ -0,0 +1,154 @@
++/* MS-Windows Engine (aka GTK-Wimp)
++ *
++ * Copyright (C) 2003, 2004 Raymond Penners <raymond@dotsphinx.com>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Library General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ * License along with this library; if not, write to the
++ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ * Boston, MA 02111-1307, USA.
++ */
++
++#ifndef XP_THEME_H
++#define XP_THEME_H
++
++#include <windows.h>
++
++#include "gtk/gtk.h"
++
++typedef enum
++{
++  XP_THEME_CLASS_SCROLLBAR = 0,
++  XP_THEME_CLASS_BUTTON,
++  XP_THEME_CLASS_HEADER,
++  XP_THEME_CLASS_COMBOBOX,
++  XP_THEME_CLASS_TAB,
++  XP_THEME_CLASS_EDIT,
++  XP_THEME_CLASS_TREEVIEW,
++  XP_THEME_CLASS_SPIN,
++  XP_THEME_CLASS_PROGRESS,
++  XP_THEME_CLASS_TOOLTIP,
++  XP_THEME_CLASS_REBAR,
++  XP_THEME_CLASS_TOOLBAR,
++  XP_THEME_CLASS_GLOBALS,
++  XP_THEME_CLASS_MENU,
++  XP_THEME_CLASS_WINDOW,
++  XP_THEME_CLASS_STATUS,
++  XP_THEME_CLASS_TRACKBAR,
++  XP_THEME_CLASS__SIZEOF
++} XpThemeClass;
++
++typedef enum
++{
++  XP_THEME_ELEMENT_PRESSED_CHECKBOX = 0,
++  XP_THEME_ELEMENT_CHECKBOX,
++  XP_THEME_ELEMENT_INCONSISTENT_CHECKBOX,
++  XP_THEME_ELEMENT_BUTTON,
++  XP_THEME_ELEMENT_LIST_HEADER,
++  XP_THEME_ELEMENT_COMBOBUTTON,
++  XP_THEME_ELEMENT_BODY,
++  XP_THEME_ELEMENT_TAB_ITEM,
++  XP_THEME_ELEMENT_TAB_ITEM_LEFT_EDGE,
++  XP_THEME_ELEMENT_TAB_ITEM_RIGHT_EDGE,
++  XP_THEME_ELEMENT_TAB_ITEM_BOTH_EDGE,
++  XP_THEME_ELEMENT_TAB_PANE,
++  XP_THEME_ELEMENT_SCROLLBAR_H,
++  XP_THEME_ELEMENT_SCROLLBAR_V,
++  XP_THEME_ELEMENT_ARROW_UP,
++  XP_THEME_ELEMENT_ARROW_DOWN,
++  XP_THEME_ELEMENT_ARROW_LEFT,
++  XP_THEME_ELEMENT_ARROW_RIGHT,
++  XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_H,
++  XP_THEME_ELEMENT_SCROLLBAR_GRIPPER_V,
++  XP_THEME_ELEMENT_TROUGH_H,
++  XP_THEME_ELEMENT_TROUGH_V,
++  XP_THEME_ELEMENT_EDIT_TEXT,
++  XP_THEME_ELEMENT_DEFAULT_BUTTON,
++  XP_THEME_ELEMENT_SPIN_BUTTON_UP,
++  XP_THEME_ELEMENT_SPIN_BUTTON_DOWN,
++  XP_THEME_ELEMENT_PRESSED_RADIO_BUTTON,
++  XP_THEME_ELEMENT_RADIO_BUTTON,
++  XP_THEME_ELEMENT_TREEVIEW_EXPANDER_OPENED,
++  XP_THEME_ELEMENT_TREEVIEW_EXPANDER_CLOSED,
++  XP_THEME_ELEMENT_PROGRESS_BAR_H,
++  XP_THEME_ELEMENT_PROGRESS_BAR_V,
++  XP_THEME_ELEMENT_PROGRESS_TROUGH_H,
++  XP_THEME_ELEMENT_PROGRESS_TROUGH_V,
++  XP_THEME_ELEMENT_TOOLTIP,
++  XP_THEME_ELEMENT_REBAR,
++  XP_THEME_ELEMENT_REBAR_GRIPPER_H,
++  XP_THEME_ELEMENT_REBAR_GRIPPER_V,
++  XP_THEME_ELEMENT_REBAR_CHEVRON,
++  XP_THEME_ELEMENT_TOOLBAR_BUTTON,
++  XP_THEME_ELEMENT_MENU_ITEM,
++  XP_THEME_ELEMENT_MENU_SEPARATOR,
++  XP_THEME_ELEMENT_STATUS_GRIPPER,
++  XP_THEME_ELEMENT_STATUS_PANE,
++  XP_THEME_ELEMENT_LINE_H,
++  XP_THEME_ELEMENT_LINE_V,
++  XP_THEME_ELEMENT_TOOLBAR_SEPARATOR_H,
++  XP_THEME_ELEMENT_TOOLBAR_SEPARATOR_V,
++  XP_THEME_ELEMENT_SCALE_TROUGH_H,
++  XP_THEME_ELEMENT_SCALE_TROUGH_V,
++  XP_THEME_ELEMENT_SCALE_SLIDER_H,
++  XP_THEME_ELEMENT_SCALE_SLIDER_V,
++  XP_THEME_ELEMENT_SCALE_TICS_H,
++  XP_THEME_ELEMENT_SCALE_TICS_V,
++  XP_THEME_ELEMENT__SIZEOF
++} XpThemeElement;
++
++typedef enum
++{
++  XP_THEME_FONT_CAPTION,
++  XP_THEME_FONT_MENU,
++  XP_THEME_FONT_STATUS,
++  XP_THEME_FONT_MESSAGE
++} XpThemeFont;
++
++typedef struct
++{
++  GdkDrawable *drawable;
++  GdkGC *gc;
++  
++  gint x_offset;
++  gint y_offset;
++  
++  /*< private >*/
++  gpointer data;
++} XpDCInfo;
++
++HDC get_window_dc (GtkStyle *style,
++		   GdkWindow *window,
++		   GtkStateType state_type,
++		   XpDCInfo *dc_info_out,
++		   gint x, gint y, gint width, gint height,
++		   RECT *rect_out);
++void release_window_dc (XpDCInfo *dc_info);
++
++void xp_theme_init (void);
++void xp_theme_reset (void);
++void xp_theme_exit (void);
++gboolean xp_theme_draw (GdkWindow *win, XpThemeElement element,
++                        GtkStyle *style, int x, int y, int width,
++                        int height, GtkStateType state_type,
++                        GdkRectangle *area);
++gboolean xp_theme_is_drawable (XpThemeElement element);
++gboolean xp_theme_get_element_dimensions (XpThemeElement element,
++                                          GtkStateType state_type,
++                                          gint *cx, gint *cy);
++gboolean xp_theme_get_system_font (XpThemeClass klazz, XpThemeFont fontId, OUT LOGFONTW *lf);
++gboolean xp_theme_get_system_color (XpThemeClass klazz, int colorId, OUT DWORD *pColor);
++gboolean xp_theme_get_system_metric (XpThemeClass klazz, int metricId, OUT int *pVal);
++
++gboolean xp_theme_is_active (void);
++
++#endif /* XP_THEME_H */
+
+--- a/gtk/xp_theme_defs.h	1970-01-01 01:00:00.000000000 +0100
++++ b/gtk/xp_theme_defs.h	2015-04-21 09:32:12.366529198 +0100
+@@ -0,0 +1,765 @@
++/* MS-Windows Engine (aka GTK-Wimp)
++ *
++ * Copyright (C) 2003, 2004 Dom Lachowicz <cinamod@hotmail.com>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Library General Public
++ * License as published by the Free Software Foundation; either
++ * version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ * License along with this library; if not, write to the
++ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ * Boston, MA 02111-1307, USA.
++ */
++
++/*
++ * These are the real values of these UXTHEME constants, provided so that we can
++ * compile/link on Win32 platforms that aren't WinXP, and also build against
++ * MinGW 1.0/1.1, which also doesn't have these things defined in its header files
++ */
++
++#ifndef XP_THEME_DFNS_H
++#define XP_THEME_DFNS_H
++
++typedef HANDLE HTHEME;
++
++#define ETDT_ENABLE         0x00000002
++#define ETDT_USETABTEXTURE  0x00000004
++#define ETDT_ENABLETAB      (ETDT_ENABLE  | ETDT_USETABTEXTURE)
++
++enum {
++  BP_PUSHBUTTON = 1,
++  BP_RADIOBUTTON = 2,
++  BP_CHECKBOX = 3,
++  BP_GROUPBOX = 4,
++  BP_USERBUTTON = 5
++};
++
++enum {
++  CBS_UNCHECKEDNORMAL = 1,
++  CBS_UNCHECKEDHOT = 2,
++  CBS_UNCHECKEDPRESSED = 3,
++  CBS_UNCHECKEDDISABLED = 4,
++  CBS_CHECKEDNORMAL = 5,
++  CBS_CHECKEDHOT = 6,
++  CBS_CHECKEDPRESSED = 7,
++  CBS_CHECKEDDISABLED = 8,
++  CBS_MIXEDNORMAL = 9,
++  CBS_MIXEDHOT = 10,
++  CBS_MIXEDPRESSED = 11,
++  CBS_MIXEDDISABLED = 12
++};
++
++enum {
++  GBS_NORMAL = 1,
++  GBS_DISABLED = 2
++};
++
++enum  	{
++  PBS_NORMAL = 1,
++  PBS_HOT = 2,
++  PBS_PRESSED = 3,
++  PBS_DISABLED = 4,
++  PBS_DEFAULTED = 5
++};
++
++enum {
++  RBS_UNCHECKEDNORMAL = 1,
++  RBS_UNCHECKEDHOT = 2,
++  RBS_UNCHECKEDPRESSED = 3,
++  RBS_UNCHECKEDDISABLED = 4,
++  RBS_CHECKEDNORMAL = 5,
++  RBS_CHECKEDHOT = 6,
++  RBS_CHECKEDPRESSED = 7,
++  RBS_CHECKEDDISABLED = 8
++};
++
++enum {
++  CLP_TIME = 1
++};
++
++enum {
++  CLS_NORMAL = 1
++};
++
++enum {
++  CP_DROPDOWNBUTTON = 1
++};
++
++enum {
++  CBXS_NORMAL = 1,
++  CBXS_HOT = 2,
++  CBXS_PRESSED = 3,
++  CBXS_DISABLED = 4
++};
++
++enum {
++  EP_EDITTEXT = 1,
++  EP_CARET = 2
++};
++
++enum {
++  ETS_NORMAL = 1,
++  ETS_HOT = 2,
++  ETS_SELECTED = 3,
++  ETS_DISABLED = 4,
++  ETS_FOCUSED = 5,
++  ETS_READONLY = 6,
++  ETS_ASSIST = 7
++};
++
++enum {
++  EBP_HEADERBACKGROUND = 1,
++  EBP_HEADERCLOSE = 2,
++  EBP_HEADERPIN = 3,
++  EBP_IEBARMENU = 4, 
++  EBP_NORMALGROUPBACKGROUND = 5,
++  EBP_NORMALGROUPCOLLAPSE = 6,
++  EBP_NORMALGROUPEXPAND = 7,
++  EBP_NORMALGROUPHEAD = 8,
++  EBP_SPECIALGROUPBACKGROUND = 9,
++  EBP_SPECIALGROUPCOLLAPSE = 10,
++  EBP_SPECIALGROUPEXPAND = 11,
++  EBP_SPECIALGROUPHEAD = 12
++};
++
++enum {
++  EBHC_NORMAL = 1,
++  EBHC_HOT = 2,
++  EBHC_PRESSED = 3
++};
++
++enum {
++  EBHP_NORMAL = 1,
++  EBHP_HOT = 2,
++  EBHP_PRESSED = 3,
++  EBHP_SELECTEDNORMAL = 4,
++  EBHP_SELECTEDHOT = 5,
++  EBHP_SELECTEDPRESSED = 6
++};
++
++enum {
++  EBM_NORMAL = 1,
++  EBM_HOT = 2,
++  EBM_PRESSED = 3
++};
++
++enum {
++  EBNGC_NORMAL = 1,
++  EBNGC_HOT = 2,
++  EBNGC_PRESSED = 3
++};
++
++enum {
++  EBNGE_NORMAL = 1,
++  EBNGE_HOT = 2,
++  EBNGE_PRESSED = 3
++};
++
++enum {
++  EBSGC_NORMAL = 1,
++  EBSGC_HOT = 2,
++  EBSGC_PRESSED = 3
++};
++
++enum {
++  EBSGE_NORMAL = 1,
++  EBSGE_HOT = 2,
++  EBSGE_PRESSED = 3
++};
++
++enum {
++  HP_HEADERITEM = 1,
++  HP_HEADERITEMLEFT = 2,
++  HP_HEADERITEMRIGHT = 3,
++  HP_HEADERSORTARROW = 4
++};
++
++enum {
++  HIS_NORMAL = 1,
++  HIS_HOT = 2,
++  HIS_PRESSED = 3
++};
++
++enum {
++  HILS_NORMAL = 1,
++  HILS_HOT = 2,
++  HILS_PRESSED = 3
++};
++
++enum {
++  HIRS_NORMAL = 1,
++  HIRS_HOT = 2,
++  HIRS_PRESSED = 3
++};
++
++enum {
++  HSAS_SORTEDUP = 1,
++  HSAS_SORTEDDOWN = 2
++};
++
++enum {
++  LVP_LISTITEM = 1,
++  LVP_LISTGROUP = 2,
++  LVP_LISTDETAIL = 3,
++  LVP_LISTSORTEDDETAIL = 4,
++  LVP_EMPTYTEXT = 5
++};
++
++enum {
++  LIS_NORMAL = 1,
++  LIS_HOT = 2,
++  LIS_SELECTED = 3,
++  LIS_DISABLED = 4,
++  LIS_SELECTEDNOTFOCUS = 5
++};
++
++enum {
++  MP_MENUITEM = 1,
++  MP_MENUDROPDOWN = 2,
++  MP_MENUBARITEM = 3,
++  MP_MENUBARDROPDOWN = 4,
++  MP_CHEVRON = 5,
++  MP_SEPARATOR = 6
++};
++
++enum {
++  MS_NORMAL = 1,
++  MS_SELECTED = 2,
++  MS_DEMOTED = 3
++};
++
++enum {
++  MDP_NEWAPPBUTTON = 1,
++  MDP_SEPERATOR = 2
++};
++
++enum {
++  MDS_NORMAL = 1,
++  MDS_HOT = 2,
++  MDS_PRESSED = 3,
++  MDS_DISABLED = 4,
++  MDS_CHECKED = 5,
++  MDS_HOTCHECKED = 6
++};
++
++enum {
++  PGRP_UP = 1,
++  PGRP_DOWN = 2,
++  PGRP_UPHORZ = 3,
++  PGRP_DOWNHORZ = 4
++};
++
++enum {
++  DNS_NORMAL = 1,
++  DNS_HOT = 2,
++  DNS_PRESSED = 3,
++  DNS_DISABLED = 4
++};
++
++enum {
++  DNHZS_NORMAL = 1,
++  DNHZS_HOT = 2,
++  DNHZS_PRESSED = 3,
++  DNHZS_DISABLED = 4
++};
++
++enum {
++  UPS_NORMAL = 1,
++  UPS_HOT = 2,
++  UPS_PRESSED = 3,
++  UPS_DISABLED = 4
++};
++
++enum {
++  UPHZS_NORMAL = 1,
++  UPHZS_HOT = 2,
++  UPHZS_PRESSED = 3,
++  UPHZS_DISABLED = 4
++};
++
++enum {
++  PP_BAR = 1,
++  PP_BARVERT = 2,
++  PP_CHUNK = 3,
++  PP_CHUNKVERT = 4
++};
++
++enum {
++  RP_GRIPPER = 1,
++  RP_GRIPPERVERT = 2,
++  RP_BAND = 3,
++  RP_CHEVRON = 4,
++  RP_CHEVRONVERT = 5
++};
++
++enum {
++  CHEVS_NORMAL = 1,
++  CHEVS_HOT = 2,
++  CHEVS_PRESSED = 3
++};
++
++enum {
++  SBP_ARROWBTN = 1,
++  SBP_THUMBBTNHORZ = 2,
++  SBP_THUMBBTNVERT = 3,
++  SBP_LOWERTRACKHORZ = 4,
++  SBP_UPPERTRACKHORZ = 5,
++  SBP_LOWERTRACKVERT = 6,
++  SBP_UPPERTRACKVERT = 7,
++  SBP_GRIPPERHORZ = 8,
++  SBP_GRIPPERVERT = 9,
++  SBP_SIZEBOX = 10
++};
++
++enum {
++  ABS_UPNORMAL = 1,
++  ABS_UPHOT = 2,
++  ABS_UPPRESSED = 3,
++  ABS_UPDISABLED = 4,
++  ABS_DOWNNORMAL = 5,
++  ABS_DOWNHOT = 6,
++  ABS_DOWNPRESSED = 7,
++  ABS_DOWNDISABLED = 8,
++  ABS_LEFTNORMAL = 9,
++  ABS_LEFTHOT = 10,
++  ABS_LEFTPRESSED = 11,
++  ABS_LEFTDISABLED = 12,
++  ABS_RIGHTNORMAL = 13,
++  ABS_RIGHTHOT = 14,
++  ABS_RIGHTPRESSED = 15,
++  ABS_RIGHTDISABLED = 16
++};
++
++enum {
++  SCRBS_NORMAL = 1,
++  SCRBS_HOT = 2,
++  SCRBS_PRESSED = 3,
++  SCRBS_DISABLED = 4
++};
++
++enum {
++  SZB_RIGHTALIGN = 1,
++  SZB_LEFTALIGN = 2
++};
++
++enum {
++  SPNP_UP = 1,
++  SPNP_DOWN = 2,
++  SPNP_UPHORZ = 3,
++  SPNP_DOWNHORZ = 4
++};
++
++enum {
++  SPP_USERPANE = 1,
++  SPP_MOREPROGRAMS = 2,
++  SPP_MOREPROGRAMSARROW = 3,
++  SPP_PROGLIST = 4,
++  SPP_PROGLISTSEPARATOR = 5,
++  SPP_PLACESLIST = 6,
++  SPP_PLACESLISTSEPARATOR = 7,
++  SPP_LOGOFF = 8,
++  SPP_LOGOFFBUTTONS = 9,
++  SPP_USERPICTURE = 10,
++  SPP_PREVIEW = 11
++};
++
++enum {
++  SPLS_NORMAL = 1,
++  SPLS_HOT = 2,
++  SPLS_PRESSED = 3
++};
++
++enum {
++  SPS_NORMAL = 1,
++  SPS_HOT = 2,
++  SPS_PRESSED = 3
++};
++
++enum {
++  SP_PANE = 1,
++  SP_GRIPPERPANE = 2,
++  SP_GRIPPER = 3
++};
++
++enum {
++  TABP_TABITEM = 1,
++  TABP_TABITEMLEFTEDGE = 2,
++  TABP_TABITEMRIGHTEDGE = 3,
++  TABP_TABITEMBOTHEDGE = 4,
++  TABP_TOPTABITEM = 5,
++  TABP_TOPTABITEMLEFTEDGE = 6,
++  TABP_TOPTABITEMRIGHTEDGE = 7,
++  TABP_TOPTABITEMBOTHEDGE = 8,
++  TABP_PANE = 9,
++  TABP_BODY = 10
++};
++
++enum {
++  TIS_NORMAL = 1,
++  TIS_HOT = 2,
++  TIS_SELECTED = 3,
++  TIS_DISABLED = 4,
++  TIS_FOCUSED = 5
++};
++
++enum {
++  TIBES_NORMAL = 1,
++  TIBES_HOT = 2,
++  TIBES_SELECTED = 3,
++  TIBES_DISABLED = 4,
++  TIBES_FOCUSED = 5
++};
++
++enum {
++  TILES_NORMAL = 1,
++  TILES_HOT = 2,
++  TILES_SELECTED = 3,
++  TILES_DISABLED = 4,
++  TILES_FOCUSED = 5
++};
++
++enum {
++  TIRES_NORMAL = 1,
++  TIRES_HOT = 2,
++  TIRES_SELECTED = 3,
++  TIRES_DISABLED = 4,
++  TIRES_FOCUSED = 5
++};
++
++enum {
++  TTIS_NORMAL = 1,
++  TTIS_HOT = 2,
++  TTIS_SELECTED = 3,
++  TTIS_DISABLED = 4,
++  TTIS_FOCUSED = 5
++};
++
++enum {
++  TTIBES_NORMAL = 1,
++  TTIBES_HOT = 2,
++  TTIBES_SELECTED = 3,
++  TTIBES_DISABLED = 4,
++  TTIBES_FOCUSED = 5
++};
++
++enum {
++  TTILES_NORMAL = 1,
++  TTILES_HOT = 2,
++  TTILES_SELECTED = 3,
++  TTILES_DISABLED = 4,
++  TTILES_FOCUSED = 5
++};
++
++enum {
++  TTIRES_NORMAL = 1,
++  TTIRES_HOT = 2,
++  TTIRES_SELECTED = 3,
++  TTIRES_DISABLED = 4,
++  TTIRES_FOCUSED = 5
++};
++
++enum {
++  TDP_GROUPCOUNT = 1,
++  TDP_FLASHBUTTON = 2,
++  TDP_FLASHBUTTONGROUPMENU = 3
++};
++
++enum {
++  TBP_BACKGROUNDBOTTOM = 1,
++  TBP_BACKGROUNDRIGHT = 2,
++  TBP_BACKGROUNDTOP = 3,
++  TBP_BACKGROUNDLEFT = 4,
++  TBP_SIZINGBARBOTTOM = 5,
++  TBP_SIZINGBARRIGHT = 6,
++  TBP_SIZINGBARTOP = 7,
++  TBP_SIZINGBARLEFT = 8
++};
++
++enum {
++  TP_BUTTON = 1,
++  TP_DROPDOWNBUTTON = 2,
++  TP_SPLITBUTTON = 3,
++  TP_SPLITBUTTONDROPDOWN = 4,
++  TP_SEPARATOR = 5,
++  TP_SEPARATORVERT = 6
++};
++
++enum {
++  TS_NORMAL = 1,
++  TS_HOT = 2,
++  TS_PRESSED = 3,
++  TS_DISABLED = 4,
++  TS_CHECKED = 5,
++  TS_HOTCHECKED = 6
++};
++
++enum {
++  TTP_STANDARD = 1,
++  TTP_STANDARDTITLE = 2,
++  TTP_BALLOON = 3,
++  TTP_BALLOONTITLE = 4,
++  TTP_CLOSE = 5
++};
++
++enum {
++  TTBS_NORMAL = 1,
++  TTBS_LINK = 2
++};
++
++enum {
++  TTCS_NORMAL = 1,
++  TTCS_HOT = 2,
++  TTCS_PRESSED = 3
++};
++
++enum {
++  TTSS_NORMAL = 1,
++  TTSS_LINK = 2
++};
++
++enum {
++  TKP_TRACK = 1,
++  TKP_TRACKVERT = 2,
++  TKP_THUMB = 3,
++  TKP_THUMBBOTTOM = 4,
++  TKP_THUMBTOP = 5,
++  TKP_THUMBVERT = 6,
++  TKP_THUMBLEFT = 7,
++  TKP_THUMBRIGHT = 8,
++  TKP_TICS = 9, TKP_TICSVERT = 10
++};
++
++enum {
++  TUS_NORMAL = 1,
++  TUS_HOT = 2,
++  TUS_PRESSED = 3,
++  TUS_FOCUSED = 4,
++  TUS_DISABLED = 5
++};
++
++enum {
++  TUBS_NORMAL = 1,
++  TUBS_HOT = 2,
++  TUBS_PRESSED = 3,
++  TUBS_FOCUSED = 4,
++  TUBS_DISABLED = 5
++};
++
++enum {
++  TUVLS_NORMAL = 1,
++  TUVLS_HOT = 2,
++  TUVLS_PRESSED = 3,
++  TUVLS_FOCUSED = 4,
++  TUVLS_DISABLED = 5
++};
++
++enum {
++  TUVRS_NORMAL = 1,
++  TUVRS_HOT = 2,
++  TUVRS_PRESSED = 3,
++  TUVRS_FOCUSED = 4,
++  TUVRS_DISABLED = 5
++};
++
++enum {
++  TUTS_NORMAL = 1,
++  TUTS_HOT = 2,
++  TUTS_PRESSED = 3,
++  TUTS_FOCUSED = 4,
++  TUTS_DISABLED = 5
++};
++
++enum {
++  TUVS_NORMAL = 1,
++  TUVS_HOT = 2,
++  TUVS_PRESSED = 3,
++  TUVS_FOCUSED = 4,
++  TUVS_DISABLED = 5
++};
++
++enum {
++  TSS_NORMAL = 1
++};
++
++enum {
++  TSVS_NORMAL = 1
++};
++
++enum {
++  TRS_NORMAL = 1
++};
++
++enum {
++  TRVS_NORMAL = 1
++};
++
++enum {
++  TNP_BACKGROUND = 1,
++  TNP_ANIMBACKGROUND = 2
++};
++
++enum {
++  TVP_TREEITEM = 1,
++  TVP_GLYPH = 2,
++  TVP_BRANCH = 3
++};
++
++enum {
++  GLPS_CLOSED = 1,
++  GLPS_OPENED = 2
++};
++
++enum {
++  TREIS_NORMAL = 1,
++  TREIS_HOT = 2,
++  TREIS_SELECTED = 3,
++  TREIS_DISABLED = 4,
++  TREIS_SELECTEDNOTFOCUS = 5
++};
++enum {
++  WP_CAPTION = 1,
++  WP_SMALLCAPTION = 2,
++  WP_MINCAPTION = 3,
++  WP_SMALLMINCAPTION = 4,
++  WP_MAXCAPTION = 5,
++  WP_SMALLMAXCAPTION = 6,
++  WP_FRAMELEFT = 7,
++  WP_FRAMERIGHT = 8,
++  WP_FRAMEBOTTOM = 9,
++  WP_SMALLFRAMELEFT = 10,
++  WP_SMALLFRAMERIGHT = 11,
++  WP_SMALLFRAMEBOTTOM = 12,
++  WP_SYSBUTTON = 13,
++  WP_MDISYSBUTTON = 14,
++  WP_MINBUTTON = 15,
++  WP_MDIMINBUTTON = 16,
++  WP_MAXBUTTON = 17,
++  WP_CLOSEBUTTON = 18,
++  WP_SMALLCLOSEBUTTON = 19,
++  WP_MDICLOSEBUTTON = 20,
++  WP_RESTOREBUTTON = 21,
++  WP_MDIRESTOREBUTTON = 22,
++  WP_HELPBUTTON = 23,
++  WP_MDIHELPBUTTON = 24,
++  WP_HORZSCROLL = 25,
++  WP_HORZTHUMB = 26,
++  WP_VERTSCROLL = 27,
++  WP_VERTTHUMB = 28,
++  WP_DIALOG = 29,
++  WP_CAPTIONSIZINGTEMPLATE = 30,
++  WP_SMALLCAPTIONSIZINGTEMPLATE = 31,
++  WP_FRAMELEFTSIZINGTEMPLATE = 32,
++  WP_SMALLFRAMELEFTSIZINGTEMPLATE = 33,
++  WP_FRAMERIGHTSIZINGTEMPLATE = 34,
++  WP_SMALLFRAMERIGHTSIZINGTEMPLATE = 35, 
++  WP_FRAMEBOTTOMSIZINGTEMPLATE = 36,
++  WP_SMALLFRAMEBOTTOMSIZINGTEMPLATE = 37
++};
++
++enum {
++  CS_ACTIVE = 1,
++  CS_INACTIVE = 2,
++  CS_DISABLED = 3
++};
++
++enum {
++  CBS_NORMAL = 1,
++  CBS_HOT = 2,
++  CBS_PUSHED = 3,
++  CBS_DISABLED = 4
++};
++
++enum {
++  FS_ACTIVE = 1,
++  FS_INACTIVE = 2
++};
++
++enum {
++  HBS_NORMAL = 1,
++  HBS_HOT = 2,
++  HBS_PUSHED = 3,
++  HBS_DISABLED = 4
++};
++
++enum {
++  HSS_NORMAL = 1,
++  HSS_HOT = 2,
++  HSS_PUSHED = 3,
++  HSS_DISABLED = 4
++};
++
++enum {
++  HTS_NORMAL = 1,
++  HTS_HOT = 2,
++  HTS_PUSHED = 3,
++  HTS_DISABLED = 4
++};
++
++enum {
++  MAXBS_NORMAL = 1,
++  MAXBS_HOT = 2,
++  MAXBS_PUSHED = 3,
++  MAXBS_DISABLED = 4
++};
++
++enum {
++  MXCS_ACTIVE = 1,
++  MXCS_INACTIVE = 2,
++  MXCS_DISABLED = 3
++};
++
++enum {
++  MINBS_NORMAL = 1,
++  MINBS_HOT = 2,
++  MINBS_PUSHED = 3,
++  MINBS_DISABLED = 4
++};
++
++enum {
++  RBS_NORMAL = 1,
++  RBS_HOT = 2,
++  RBS_PUSHED = 3,
++  RBS_DISABLED = 4
++};
++
++enum {
++  SBS_NORMAL = 1,
++  SBS_HOT = 2,
++  SBS_PUSHED = 3,
++  SBS_DISABLED = 4
++};
++
++enum {
++  MNCS_ACTIVE = 1,
++  MNCS_INACTIVE = 2,
++  MNCS_DISABLED = 3
++};
++
++enum {
++  VSS_NORMAL = 1,
++  VSS_HOT = 2,
++  VSS_PUSHED = 3,
++  VSS_DISABLED = 4
++};
++
++enum {
++  VTS_NORMAL = 1,
++  VTS_HOT = 2,
++  VTS_PUSHED = 3,
++  VTS_DISABLED = 4
++};
++
++enum {
++  TS_MIN,
++  TS_TRUE,
++  TS_DRAW
++};
++
++#endif /* XP_THEME_DFNS_H */
+
