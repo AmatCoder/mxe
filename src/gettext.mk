@@ -9,7 +9,7 @@ $(PKG)_SUBDIR   := gettext-$($(PKG)_VERSION)
 $(PKG)_FILE     := gettext-$($(PKG)_VERSION).tar.gz
 $(PKG)_URL      := http://ftp.gnu.org/pub/gnu/gettext/$($(PKG)_FILE)
 $(PKG)_URL_2    := ftp://ftp.gnu.org/pub/gnu/gettext/$($(PKG)_FILE)
-$(PKG)_DEPS     := gcc libiconv
+$(PKG)_DEPS     := gcc
 
 define $(PKG)_UPDATE
     $(WGET) -q -O- 'http://www.gnu.org/software/gettext/' | \

@@ -8,7 +8,7 @@ $(PKG)_CHECKSUM := 21c45586a4e94d7622e371340edec5da40d06ecc
 $(PKG)_SUBDIR   := SDL2-$($(PKG)_VERSION)
 $(PKG)_FILE     := SDL2-$($(PKG)_VERSION).tar.gz
 $(PKG)_URL      := http://www.libsdl.org/release/$($(PKG)_FILE)
-$(PKG)_DEPS     := gcc libiconv
+$(PKG)_DEPS     := gcc
 
 define $(PKG)_UPDATE
     $(WGET) -q -O- 'http://hg.libsdl.org/SDL/tags' | \
