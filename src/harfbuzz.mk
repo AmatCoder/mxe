@@ -18,8 +18,12 @@ define $(PKG)_UPDATE
 endef
 
 define $(PKG)_BUILD
-    cd '$(1)' && ./configure --with-icu=no \
+    cd '$(1)' && ./configure \
         $(MXE_CONFIGURE_OPTS) \
-        LIBS='-lstdc++'
+        LIBS='-lstdc++' \
+        --with-icu=no \
+        --enable-introspection=no \
+        --enable-gtk-doc-html=no
+
     $(MAKE) -C '$(1)' -j '$(JOBS)' install
 endef

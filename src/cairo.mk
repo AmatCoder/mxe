@@ -26,6 +26,7 @@ define $(PKG)_BUILD
         --disable-test-surfaces \
         --disable-gcov \
         --disable-xlib \
+        --disable-valgrind \
         --disable-xlib-xrender \
         --disable-xcb \
         --disable-quartz \
@@ -35,13 +36,16 @@ define $(PKG)_BUILD
         --disable-beos \
         --disable-directfb \
         --disable-atomic \
+        --enable-egl=no \
+        --enable-glx=no \
+        --enable-wgl=no \
         --enable-win32 \
         --enable-win32-font \
         --enable-png \
         --enable-ft \
-        --enable-ps \
+        --enable-ps=no \
         --enable-pdf \
-        --enable-svg \
+        --enable-svg=no \
         --disable-pthread \
         CFLAGS="$(CFLAGS) $(if $(BUILD_STATIC),-DCAIRO_WIN32_STATIC_BUILD)" \
         LIBS="-lmsimg32 -lgdi32 `$(TARGET)-pkg-config pixman-1 --libs`"

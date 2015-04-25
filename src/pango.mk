@@ -25,6 +25,9 @@ define $(PKG)_BUILD
         --enable-explicit-deps \
         --with-included-modules \
         --without-dynamic-modules \
+       --enable-introspection=no \
+       --enable-debug=no \
+       --enable-gtk-doc-html=no \
         CXX='$(TARGET)-g++'
     $(MAKE) -C '$(1)' -j '$(JOBS)' install bin_PROGRAMS= sbin_PROGRAMS= noinst_PROGRAMS=
 endef
