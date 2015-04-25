@@ -8,7 +8,7 @@ $(PKG)_CHECKSUM := b5158fd434f01e84259155c04ff93026a090e586
 $(PKG)_SUBDIR   := glib-$($(PKG)_VERSION)
 $(PKG)_FILE     := glib-$($(PKG)_VERSION).tar.xz
 $(PKG)_URL      := http://ftp.gnome.org/pub/gnome/sources/glib/$(call SHORT_PKG_VERSION,$(PKG))/$($(PKG)_FILE)
-$(PKG)_DEPS     := gcc gettext pcre zlib libffi
+$(PKG)_DEPS     := gcc gettext zlib libffi
 
 define $(PKG)_UPDATE
     $(WGET) -q -O- 'http://git.gnome.org/browse/glib/refs/tags' | \
@@ -46,7 +46,7 @@ define $(PKG)_NATIVE_BUILD
         --disable-fam \
         --disable-xattr \
         --disable-dtrace \
-        --with-libiconv=gnu \
+        --with-libiconv=no \
         --with-pcre=internal \
         CPPFLAGS='-I$(1).native/$(libiconv_SUBDIR)/include -I$(1).native/$(zlib_SUBDIR)' \
         LDFLAGS='-L$(1).native/$(libiconv_SUBDIR)/lib/.libs -L$(1).native/$(zlib_SUBDIR)'
@@ -87,10 +87,16 @@ define $(PKG)_BUILD
     # cross build
     cd '$(1)' && ./configure \
         $(MXE_CONFIGURE_OPTS) \
-        --with-threads=win32 \
-        --with-pcre=system \
-        --with-libiconv=gnu \
+        --disable-selinux \
         --disable-inotify \
+        --disable-fam \
+        --disable-xattr \
+        --disable-dtrace \
+        --with-libiconv=no \
+        --with-pcre=internal \
+        --with-threads=win32 \
+        --with-libiconv=no \
+        --enable-debug=no \
         CXX='$(TARGET)-g++' \
         PKG_CONFIG='$(PREFIX)/bin/$(TARGET)-pkg-config' \
         GLIB_GENMARSHAL='$(PREFIX)/$(TARGET)/bin/glib-genmarshal' \
