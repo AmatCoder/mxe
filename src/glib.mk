@@ -95,8 +95,7 @@ define $(PKG)_BUILD
         --with-libiconv=no \
         --with-pcre=internal \
         --with-threads=win32 \
-        --with-libiconv=no \
-        --enable-debug=no \
+        --enable-debug=minimal \
         CXX='$(TARGET)-g++' \
         PKG_CONFIG='$(PREFIX)/bin/$(TARGET)-pkg-config' \
         GLIB_GENMARSHAL='$(PREFIX)/$(TARGET)/bin/glib-genmarshal' \

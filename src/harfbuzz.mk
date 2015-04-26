@@ -8,7 +8,7 @@ $(PKG)_CHECKSUM := aedc7f7ed8fdca0ca170f9a5bd7304fe4604174d
 $(PKG)_SUBDIR   := $(PKG)-$($(PKG)_VERSION)
 $(PKG)_FILE     := $(PKG)-$($(PKG)_VERSION).tar.bz2
 $(PKG)_URL      := http://www.freedesktop.org/software/$(PKG)/release/$($(PKG)_FILE)
-$(PKG)_DEPS     := gcc glib cairo freetype-bootstrap
+$(PKG)_DEPS     := gcc glib cairo
 
 define $(PKG)_UPDATE
     $(WGET) -q -O- 'http://cgit.freedesktop.org/harfbuzz/refs/tags' | \
@@ -22,8 +22,8 @@ define $(PKG)_BUILD
         $(MXE_CONFIGURE_OPTS) \
         LIBS='-lstdc++' \
         --with-icu=no \
-        --enable-introspection=no \
-        --enable-gtk-doc-html=no
+        --with-freetype=no \
+        --enable-introspection=no
 
     $(MAKE) -C '$(1)' -j '$(JOBS)' install
 endef
