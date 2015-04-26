@@ -8,7 +8,7 @@ $(PKG)_CHECKSUM := dae8cbb37f318c9e7a299d4a8dfccaf13edd8e27
 $(PKG)_SUBDIR   := gtk+-$($(PKG)_VERSION)
 $(PKG)_FILE     := gtk+-$($(PKG)_VERSION).tar.xz
 $(PKG)_URL      := http://ftp.gnome.org/pub/gnome/sources/gtk+/$(call SHORT_PKG_VERSION,$(PKG))/$($(PKG)_FILE)
-$(PKG)_DEPS     := gcc libpng tiff glib atk pango cairo gdk-pixbuf
+$(PKG)_DEPS     := gcc gettext libpng tiff glib atk pango cairo gdk-pixbuf
 
 define $(PKG)_UPDATE
     $(WGET) -q -O- 'http://git.gnome.org/browse/gtk+/refs/tags' | \
@@ -37,7 +37,7 @@ define $(PKG)_BUILD
         --with-gdktarget=win32 \
         --disable-papi \
         --enable-introspection=no \
-        --enable-debug=no \
+        --enable-debug=no 
 
     $(MAKE) -C '$(1)' -j '$(JOBS)' install bin_PROGRAMS= sbin_PROGRAMS= noinst_PROGRAMS=
 
