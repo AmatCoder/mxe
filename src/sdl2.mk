@@ -19,17 +19,17 @@ endef
 define $(PKG)_BUILD
     cd '$(1)' && aclocal -I acinclude && autoconf && ./configure \
         $(MXE_CONFIGURE_OPTS) \
-        --disable-threads \
+        --enable-threads \
         --enable-directx \
         --disable-audio \
         --enable-video \
         --disable-render \
         --enable-events \
         --enable-joystick \
-        --enable-haptic \
+        --disable-haptic \
         --disable-power \
         --enable-filesystem \
-        --disable-timers \
+        --enable-timers \
         --disable-file \
         --disable-loadso \
         --disable-cpuinfo \
