@@ -415,7 +415,6 @@ build-only-$(1)_$(3): CMAKE_TOOLCHAIN_FILE = $(PREFIX)/$(3)/share/cmake/mxe-conf
 build-only-$(1)_$(3):
 	$(if $(value $(call LOOKUP_PKG_RULE,$(1),BUILD,$(3))),
 	    uname -a
-	    git show-branch --list --reflog=1
 	    lsb_release -a 2>/dev/null || sw_vers 2>/dev/null || true
 	    rm -rf   '$(2)'
 	    mkdir -p '$(2)'
