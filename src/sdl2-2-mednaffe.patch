@@ -1,0 +1,72 @@
+--- SDL2-2.0.3-origin/include/SDL_joystick.h	2014-03-16 03:31:42.000000000 +0100
++++ SDL2-2.0.3/include/SDL_joystick.h	2015-07-26 11:56:19.054599693 +0200
+@@ -132,6 +132,9 @@ extern DECLSPEC SDL_bool SDLCALL SDL_Joy
+  */
+ extern DECLSPEC SDL_JoystickID SDLCALL SDL_JoystickInstanceID(SDL_Joystick * joystick);
+ 
++extern DECLSPEC int SDLCALL SDL_JoystickDevType(SDL_Joystick * joystick);
++extern DECLSPEC int SDLCALL SDL_JoystickDevSubType(SDL_Joystick * joystick);
++
+ /**
+  *  Get the number of general axis controls on a joystick.
+  */
+--- SDL2-2.0.3-origin/src/joystick/SDL_joystick.c	2014-03-16 03:31:41.000000000 +0100
++++ SDL2-2.0.3/src/joystick/SDL_joystick.c	2015-07-26 11:46:39.234586933 +0200
+@@ -215,6 +215,24 @@ SDL_PrivateJoystickValid(SDL_Joystick *
+     return valid;
+ }
+ 
++int
++SDL_JoystickDevType(SDL_Joystick * joystick)
++{
++    if (!SDL_PrivateJoystickValid(joystick)) {
++        return (-1);
++    }
++    return (joystick->devtype);
++}
++
++int
++SDL_JoystickDevSubType(SDL_Joystick * joystick)
++{
++    if (!SDL_PrivateJoystickValid(joystick)) {
++        return (-1);
++    }
++    return (joystick->devsubtype);
++}
++
+ /*
+  * Get the number of multi-dimensional axis controls on a joystick
+  */
+--- SDL2-2.0.3-origin/src/joystick/SDL_sysjoystick.h	2014-03-16 03:31:41.000000000 +0100
++++ SDL2-2.0.3/src/joystick/SDL_sysjoystick.h	2015-07-26 13:29:35.408056184 +0200
+@@ -31,6 +31,9 @@ struct _SDL_Joystick
+     SDL_JoystickID instance_id; /* Device instance, monotonically increasing from 0 */
+     char *name;                 /* Joystick name - system dependent */
+ 
++    int devtype;
++    int devsubtype;
++
+     int naxes;                  /* Number of axis controls on the joystick */
+     Sint16 *axes;               /* Current axis states */
+ 
+--- SDL2-2.0.3-origin/src/joystick/windows/SDL_dxjoystick.c	2014-03-16 03:31:41.000000000 +0100
++++ SDL2-2.0.3/src/joystick/windows/SDL_dxjoystick.c	2015-07-26 13:27:53.414720606 +0200
+@@ -981,6 +981,8 @@ SDL_SYS_JoystickOpen(SDL_Joystick * joys
+                 joystick->hwdata->bXInputHaptic = SDL_TRUE;
+             }
+             joystick->hwdata->userid = userId;
++            joystick->devtype = capabilities.Type;
++            joystick->devsubtype = capabilities.SubType;
+ 
+             /* The XInput API has a hard coded button/axis mapping, so we just match it */
+             joystick->naxes = 6;
+@@ -992,6 +994,9 @@ SDL_SYS_JoystickOpen(SDL_Joystick * joys
+         LPDIRECTINPUTDEVICE8 device;
+         DIPROPDWORD dipdw;
+ 
++        joystick->devtype = -1;
++        joystick->devsubtype = -1;
++
+         joystick->hwdata->buffered = 1;
+         joystick->hwdata->removed = 0;
+         joystick->hwdata->Capabilities.dwSize = sizeof(DIDEVCAPS);
