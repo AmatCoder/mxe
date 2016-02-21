@@ -3,10 +3,10 @@
 
 PKG             := mednaffe
 $(PKG)_IGNORE   :=
-$(PKG)_VERSION  := 0.8
-$(PKG)_CHECKSUM := 4edbb4f72b050016b56c6a68262c9da23ec35d3a
-$(PKG)_SUBDIR   := $(PKG)-$($(PKG)_VERSION)
-$(PKG)_FILE     := $(PKG)-$($(PKG)_VERSION).zip
+$(PKG)_VERSION  := 0.8.1
+$(PKG)_CHECKSUM := 75194a11df08cda82f9be86a2f2ffe7d496e70f2
+$(PKG)_SUBDIR   := $(PKG)-$($(PKG)_VERSION)-src
+$(PKG)_FILE     := $(PKG)-$($(PKG)_VERSION)-src.zip
 $(PKG)_URL      :=https://sites.google.com/site/amatcoder/mednaffe/downloads/$($(PKG)_FILE)?attredirects=0&d=1
 $(PKG)_DEPS     := gtk2 sdl2
 
