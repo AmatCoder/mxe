@@ -4,7 +4,7 @@
 PKG             := mednaffe
 $(PKG)_IGNORE   :=
 $(PKG)_VERSION  := 0.8.4
-$(PKG)_CHECKSUM := bce530c56e2347f459afedab861c53170e9ced91
+$(PKG)_CHECKSUM := 8ef89330d4b128d68b4f17f7ca760b6870d72878
 $(PKG)_SUBDIR   := $(PKG)-$($(PKG)_VERSION)
 $(PKG)_FILE     := $(PKG)-$($(PKG)_VERSION)-src.zip
 $(PKG)_URL      :=https://sites.google.com/site/amatcoder/mednaffe/downloads/$($(PKG)_FILE)?attredirects=0&d=1
