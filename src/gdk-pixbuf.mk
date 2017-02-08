@@ -23,6 +23,7 @@ define $(PKG)_BUILD
     cd '$(1)' && ./configure \
         $(MXE_CONFIGURE_OPTS) \
         --disable-modules \
+        --with-included-loaders=png \
         --enable-debug=no  \
         --without-gdiplus \
         --without-libjpeg \
