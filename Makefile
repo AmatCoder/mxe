@@ -245,7 +245,7 @@ all: all-filtered
 
 .PHONY: check-requirements
 define CHECK_REQUIREMENT
-    @if ! $(1) --help &>/dev/null; then \
+    @if ! ( $(1) --help || $(1) help ) &>/dev/null; then \
         echo 'Missing requirement: $(1)'; \
         touch check-requirements-failed; \
     fi
