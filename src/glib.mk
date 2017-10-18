@@ -20,15 +20,6 @@ endef
 define $(PKG)_NATIVE_BUILD
     cp -Rp '$(1)' '$(1).native'
 
-    # native build of libiconv (used by glib-genmarshal)
-    cd '$(1).native' && $(call UNPACK_PKG_ARCHIVE,libiconv)
-    $(foreach PKG_PATCH,$(sort $(wildcard $(TOP_DIR)/src/libiconv-*.patch)),
-        (cd '$(1).native/$(libiconv_SUBDIR)' && $(PATCH) -p1 -u) < $(PKG_PATCH))
-    cd '$(1).native/$(libiconv_SUBDIR)' && ./configure \
-        --disable-shared \
-        --disable-nls
-    $(MAKE) -C '$(1).native/$(libiconv_SUBDIR)' -j '$(JOBS)'
-
     # native build of zlib...
     cd '$(1).native' && $(call UNPACK_PKG_ARCHIVE,zlib)
     cd '$(1).native/$(zlib_SUBDIR)' && ./configure \
@@ -62,27 +53,11 @@ define $(PKG)_NATIVE_BUILD
     $(INSTALL) -m755 '$(1).native/gio/glib-compile-resources' '$(PREFIX)/$(TARGET)/bin/'
 endef
 
-define $(PKG)_SYMLINK
-    ln -sf `which glib-genmarshal`        '$(PREFIX)/$(TARGET)/bin/'
-    ln -sf `which glib-compile-schemas`   '$(PREFIX)/$(TARGET)/bin/'
-    ln -sf `which glib-compile-resources` '$(PREFIX)/$(TARGET)/bin/'
-endef
-
 define $(PKG)_BUILD
     cd '$(1)' && NOCONFIGURE=true ./autogen.sh
-    rm -f '$(PREFIX)/$(TARGET)/bin/glib-*'
+    rm -f $(PREFIX)/$(TARGET)/bin/glib-*
 
-    # Detecting if these GLib tools are already available on host machine,
-    # either because of a host package installation or from an earlier MXE
-    # installation of GLib.
-    # If it is installed, we symlink it into the MXE bin/.
-    # If not, we build it.
-    $(if $(findstring y,\
-            $(shell [ -x "`which glib-genmarshal`" ] && \
-                    [ -x "`which glib-compile-schemas`" ] && \
-                    [ -x "`which glib-compile-resources`" ] && echo y)), \
-        $($(PKG)_SYMLINK), \
-        $($(PKG)_NATIVE_BUILD))
+    $($(PKG)_NATIVE_BUILD)
 
     # cross build
     cd '$(1)' && ./configure \

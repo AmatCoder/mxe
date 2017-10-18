@@ -1215,3 +1215,81 @@ index d6d1412..79141ec 100644
 -- 
 1.8.4.5
 
+
+From 0817af40e8c74c721c30f6ef482b1f53d12044c7 Mon Sep 17 00:00:00 2001
+From: coypu <coypu@sdf.org>
+Date: Mon, 8 Feb 2016 00:06:06 +0200
+Subject: gdate: Suppress string format literal warning
+
+Newer versions of GCC emit an error here, but we know it's safe.
+https://bugzilla.gnome.org/761550
+---
+ glib/gdate.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/glib/gdate.c b/glib/gdate.c
+index 4aece02..cdc735c 100644
+--- a/glib/gdate.c
++++ b/glib/gdate.c
+@@ -2494,7 +2494,10 @@ g_date_strftime (gchar       *s,
+        * recognize whether strftime actually failed or just returned "".
+        */
+       tmpbuf[0] = '\1';
++      #pragma GCC diagnostic push
++      #pragma GCC diagnostic ignored "-Wformat-nonliteral"
+       tmplen = strftime (tmpbuf, tmpbufsize, locale_format, &tm);
++      #pragma GCC diagnostic pop
+ 
+       if (tmplen == 0 && tmpbuf[0] != '\0')
+         {
+-- 
+cgit v0.12
+
+
+From 8cdbc7fb2c8c876902e457abe46ee18a0b134486 Mon Sep 17 00:00:00 2001
+From: coypu <coypu@sdf.org>
+Date: Wed, 2 Mar 2016 19:38:48 +0200
+Subject: gdate: Move warning pragma outside of function
+
+Commit 0817af40e8c74c721c30f6ef482b1f53d12044c7 breaks the build on
+older versions of GCC, which don't allow pragma inside functions.
+
+https://bugzilla.gnome.org/761550
+---
+ glib/gdate.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/glib/gdate.c b/glib/gdate.c
+index cdc735c..92c34d2 100644
+--- a/glib/gdate.c
++++ b/glib/gdate.c
+@@ -2439,6 +2439,9 @@ win32_strftime_helper (const GDate     *d,
+  *
+  * Returns: number of characters written to the buffer, or 0 the buffer was too small
+  */
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wformat-nonliteral"
++
+ gsize     
+ g_date_strftime (gchar       *s, 
+                  gsize        slen, 
+@@ -2494,10 +2497,7 @@ g_date_strftime (gchar       *s,
+        * recognize whether strftime actually failed or just returned "".
+        */
+       tmpbuf[0] = '\1';
+-      #pragma GCC diagnostic push
+-      #pragma GCC diagnostic ignored "-Wformat-nonliteral"
+       tmplen = strftime (tmpbuf, tmpbufsize, locale_format, &tm);
+-      #pragma GCC diagnostic pop
+ 
+       if (tmplen == 0 && tmpbuf[0] != '\0')
+         {
+@@ -2552,3 +2552,5 @@ g_date_strftime (gchar       *s,
+   return retval;
+ #endif
+ }
++
++#pragma GCC diagnostic pop
+-- 
+cgit v0.12
+
