@@ -1,21 +1,33 @@
---- SDL2-2.0.3-origin/include/SDL_joystick.h	2014-03-16 03:31:42.000000000 +0100
-+++ SDL2-2.0.3/include/SDL_joystick.h	2015-07-26 11:56:19.054599693 +0200
-@@ -132,6 +132,9 @@ extern DECLSPEC SDL_bool SDLCALL SDL_Joy
-  */
- extern DECLSPEC SDL_JoystickID SDLCALL SDL_JoystickInstanceID(SDL_Joystick * joystick);
+diff -ruN SDL2-2.0.3-original/include/SDL_joystick.h SDL2-2.0.3/include/SDL_joystick.h
+--- SDL2-2.0.3-original/include/SDL_joystick.h	2014-03-16 03:31:42.000000000 +0100
++++ SDL2-2.0.3/include/SDL_joystick.h	2018-03-18 20:57:36.094982697 +0100
+@@ -184,6 +184,18 @@
+ extern DECLSPEC Sint16 SDLCALL SDL_JoystickGetAxis(SDL_Joystick * joystick,
+                                                    int axis);
  
++
++
 +extern DECLSPEC int SDLCALL SDL_JoystickDevType(SDL_Joystick * joystick);
 +extern DECLSPEC int SDLCALL SDL_JoystickDevSubType(SDL_Joystick * joystick);
++extern DECLSPEC int SDLCALL SDL_JoystickCapsFlags(SDL_Joystick * joystick);
++extern DECLSPEC int SDLCALL SDL_JoystickCapsGamepadwButtons(SDL_Joystick * joystick);
++
++extern DECLSPEC int SDLCALL SDL_JoystickGuidProduct1(SDL_Joystick * joystick);
++extern DECLSPEC int SDLCALL SDL_JoystickGuidProduct2(SDL_Joystick * joystick);
++extern DECLSPEC int SDLCALL SDL_JoystickGuidProduct3(SDL_Joystick * joystick);
++extern DECLSPEC char* SDLCALL SDL_JoystickGuidProduct4(SDL_Joystick * joystick);
 +
  /**
-  *  Get the number of general axis controls on a joystick.
+  *  \name Hat positions
   */
---- SDL2-2.0.3-origin/src/joystick/SDL_joystick.c	2014-03-16 03:31:41.000000000 +0100
-+++ SDL2-2.0.3/src/joystick/SDL_joystick.c	2015-07-26 11:46:39.234586933 +0200
-@@ -215,6 +215,24 @@ SDL_PrivateJoystickValid(SDL_Joystick *
-     return valid;
+diff -ruN SDL2-2.0.3-original/src/joystick/SDL_joystick.c SDL2-2.0.3/src/joystick/SDL_joystick.c
+--- SDL2-2.0.3-original/src/joystick/SDL_joystick.c	2014-03-16 03:31:41.000000000 +0100
++++ SDL2-2.0.3/src/joystick/SDL_joystick.c	2018-03-18 20:57:32.375982863 +0100
+@@ -851,4 +851,74 @@
  }
  
+ 
++
 +int
 +SDL_JoystickDevType(SDL_Joystick * joystick)
 +{
@@ -34,52 +46,91 @@
 +    return (joystick->devsubtype);
 +}
 +
- /*
-  * Get the number of multi-dimensional axis controls on a joystick
-  */
---- SDL2-2.0.3-origin/src/joystick/SDL_sysjoystick.h	2014-03-16 03:31:41.000000000 +0100
-+++ SDL2-2.0.3/src/joystick/SDL_sysjoystick.h	2015-07-26 13:29:35.408056184 +0200
-@@ -31,6 +31,9 @@ struct _SDL_Joystick
-     SDL_JoystickID instance_id; /* Device instance, monotonically increasing from 0 */
-     char *name;                 /* Joystick name - system dependent */
- 
++int
++SDL_JoystickCapsFlags(SDL_Joystick * joystick)
++{
++    if (!SDL_PrivateJoystickValid(joystick)) {
++        return (-1);
++    }
++    return (joystick->flags);
++}
++
++int
++SDL_JoystickCapsGamepadwButtons(SDL_Joystick * joystick)
++{
++    if (!SDL_PrivateJoystickValid(joystick)) {
++        return (-1);
++    }
++    return (joystick->wButtons);
++}
++
++int
++SDL_JoystickGuidProduct1(SDL_Joystick * joystick)
++{
++    if (!SDL_PrivateJoystickValid(joystick)) {
++        return (-1);
++    }
++    return (joystick->guidProduct1);
++}
++
++int
++SDL_JoystickGuidProduct2(SDL_Joystick * joystick)
++{
++    if (!SDL_PrivateJoystickValid(joystick)) {
++        return (-1);
++    }
++    return (joystick->guidProduct2);
++}
++
++int
++SDL_JoystickGuidProduct3(SDL_Joystick * joystick)
++{
++    if (!SDL_PrivateJoystickValid(joystick)) {
++        return (-1);
++    }
++    return (joystick->guidProduct3);
++}
++
++char*
++SDL_JoystickGuidProduct4(SDL_Joystick * joystick)
++{
++    return (joystick->guidProduct4);
++}
++
+ /* vi: set ts=4 sw=4 expandtab: */
+diff -ruN SDL2-2.0.3-original/src/joystick/SDL_sysjoystick.h SDL2-2.0.3/src/joystick/SDL_sysjoystick.h
+--- SDL2-2.0.3-original/src/joystick/SDL_sysjoystick.h	2014-03-16 03:31:41.000000000 +0100
++++ SDL2-2.0.3/src/joystick/SDL_sysjoystick.h	2018-03-18 20:56:41.247985142 +0100
+@@ -53,6 +53,18 @@
+     Uint8 closed;               /* 1 if this device is no longer valid */
+     Uint8 uncentered;           /* 1 if this device needs to have its state reset to 0 */
+     struct _SDL_Joystick *next; /* pointer to next joystick we have allocated */
++
++
 +    int devtype;
 +    int devsubtype;
++    int flags;
++    int wButtons;
 +
-     int naxes;                  /* Number of axis controls on the joystick */
-     Sint16 *axes;               /* Current axis states */
- 
---- SDL2-2.0.3-origin/src/joystick/windows/SDL_dxjoystick.c	2014-03-16 03:31:41.000000000 +0100
-+++ SDL2-2.0.3/src/joystick/windows/SDL_dxjoystick.c	2015-07-26 13:27:53.414720606 +0200
-@@ -981,6 +981,8 @@ SDL_SYS_JoystickOpen(SDL_Joystick * joys
-                 joystick->hwdata->bXInputHaptic = SDL_TRUE;
-             }
-             joystick->hwdata->userid = userId;
-+            joystick->devtype = capabilities.Type;
-+            joystick->devsubtype = capabilities.SubType;
- 
-             /* The XInput API has a hard coded button/axis mapping, so we just match it */
-             joystick->naxes = 6;
-@@ -992,6 +994,9 @@ SDL_SYS_JoystickOpen(SDL_Joystick * joys
-         LPDIRECTINPUTDEVICE8 device;
-         DIPROPDWORD dipdw;
- 
-+        joystick->devtype = -1;
-+        joystick->devsubtype = -1;
++    int guidProduct1;
++    int guidProduct2;
++    int guidProduct3;
++    char guidProduct4[8];
 +
-         joystick->hwdata->buffered = 1;
-         joystick->hwdata->removed = 0;
-         joystick->hwdata->Capabilities.dwSize = sizeof(DIDEVCAPS);
---- SDL2-2.0.3-origin/src/joystick/windows/SDL_dxjoystick.c	2014-03-16 03:31:41.000000000 +0100
-+++ SDL2-2.0.3/src/joystick/windows/SDL_dxjoystick.c	2016-02-20 14:05:23.006311296 +0100
-@@ -100,14 +100,18 @@
+ };
+ 
+ /* Function to scan the system for joysticks.
+diff -ruN SDL2-2.0.3-original/src/joystick/windows/SDL_dxjoystick.c SDL2-2.0.3/src/joystick/windows/SDL_dxjoystick.c
+--- SDL2-2.0.3-original/src/joystick/windows/SDL_dxjoystick.c	2014-03-16 03:31:41.000000000 +0100
++++ SDL2-2.0.3/src/joystick/windows/SDL_dxjoystick.c	2018-03-18 20:08:38.721886545 +0100
+@@ -100,14 +100,19 @@
          return 0;  /* already loaded */
      }
  
 -    version = (1 << 16) | 4;
 -    s_pXInputDLL = LoadLibrary( L"XInput1_4.dll" );  /* 1.4 Ships with Windows 8. */
 +    version = (1 << 16) | 3;
-+    s_pXInputDLL = LoadLibrary( L"XInput1_3.dll" );  /* 1.3 can be installed as a redistributable component. */
++    s_pXInputDLL = LoadLibrary( L"XInput1_3.dll" );  /* 1.3 Ships with Vista and Win7, can be installed as a redistributable component. */
      if (!s_pXInputDLL) {
 -        version = (1 << 16) | 3;
 -        s_pXInputDLL = LoadLibrary( L"XInput1_3.dll" );  /* 1.3 Ships with Vista and Win7, can be installed as a redistributable component. */
@@ -91,18 +142,53 @@
 +        s_pXInputDLL = LoadLibrary( L"XInput1_4.dll" );  /* 1.4 Ships with Windows 8. */
 +    }
 +    if (!s_pXInputDLL) {
++        version = (1 << 16) | 3;
 +        /* "9.1.0" Ships with Vista and Win7, and is more limited than 1.3+ (e.g. XInputGetStateEx is not available.)  */
 +        s_pXInputDLL = LoadLibrary(L"XInput9_1_0.dll");
      }
      if (!s_pXInputDLL) {
          return -1;
-@@ -119,6 +123,9 @@
+@@ -119,6 +124,13 @@
  
      /* 100 is the ordinal for _XInputGetStateEx, which returns the same struct as XinputGetState, but with extra data in wButtons for the guide button, we think... */
      SDL_XInputGetState = (XInputGetState_t)GetProcAddress( (HMODULE)s_pXInputDLL, (LPCSTR)100 );
++
++
 +    if (!SDL_XInputGetState) {
 +        SDL_XInputGetState = (XInputGetState_t)GetProcAddress((HMODULE)s_pXInputDLL, "XInputGetState");
 +    }
++
++
      SDL_XInputSetState = (XInputSetState_t)GetProcAddress( (HMODULE)s_pXInputDLL, "XInputSetState" );
      SDL_XInputGetCapabilities = (XInputGetCapabilities_t)GetProcAddress( (HMODULE)s_pXInputDLL, "XInputGetCapabilities" );
      if ( !SDL_XInputGetState || !SDL_XInputSetState || !SDL_XInputGetCapabilities ) {
+@@ -987,11 +999,29 @@
+             joystick->nbuttons = 15;
+             joystick->nballs = 0;
+             joystick->nhats = 0;
++
++            joystick->devtype = capabilities.Type;
++            joystick->devsubtype = capabilities.SubType;
++            joystick->flags = capabilities.Flags;
++            joystick->wButtons = capabilities.Gamepad.wButtons;
++            joystick->guidProduct1 = 0x0000000;
++            joystick->guidProduct2 = 0x0000;
++            joystick->guidProduct3 = 0x0000;
++            //joystick->guidProduct4 = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+ 		}
+     } else {  /* use DirectInput, not XInput. */
+         LPDIRECTINPUTDEVICE8 device;
+         DIPROPDWORD dipdw;
+ 
++        joystick->devtype = 0;
++        joystick->devsubtype = 0;
++        joystick->flags = 0;
++        joystick->wButtons = 0;
++        joystick->guidProduct1 = joystickdevice->dxdevice.guidProduct.Data1;
++        joystick->guidProduct2 = joystickdevice->dxdevice.guidProduct.Data2;
++        joystick->guidProduct3 = joystickdevice->dxdevice.guidProduct.Data3;
++        memcpy(&joystick->guidProduct4, joystickdevice->dxdevice.guidProduct.Data4, 8);
++
+         joystick->hwdata->buffered = 1;
+         joystick->hwdata->removed = 0;
+         joystick->hwdata->Capabilities.dwSize = sizeof(DIDEVCAPS);
