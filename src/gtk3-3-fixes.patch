@@ -1,0 +1,131 @@
+--- a/gtk/gtkcolorchooserwidget.c	2017-11-16 14:21:24.000000000 +0100
++++ b/gtk/gtkcolorchooserwidget.c	2018-12-03 15:15:52.428263468 +0100
+@@ -76,8 +76,6 @@
+ 
+   gboolean use_alpha;
+   gboolean has_default_palette;
+-
+-  GSettings *settings;
+ };
+ 
+ enum
+@@ -112,9 +110,6 @@
+ 
+   gtk_color_swatch_get_rgba (swatch, &color);
+ 
+-  g_settings_set (cc->priv->settings, "selected-color", "(bdddd)",
+-                  TRUE, color.red, color.green, color.blue, color.alpha);
+-
+   if (gtk_widget_get_visible (GTK_WIDGET (cc->priv->editor)))
+     gtk_color_chooser_set_rgba (GTK_COLOR_CHOOSER (cc->priv->editor), &color);
+   else
+@@ -209,7 +204,6 @@
+     }
+ 
+   variant = g_variant_builder_end (&builder);
+-  g_settings_set_value (cc->priv->settings, "custom-colors", variant);
+ 
+   g_list_free (children);
+ }
+@@ -514,16 +508,13 @@
+ gtk_color_chooser_widget_init (GtkColorChooserWidget *cc)
+ {
+   GtkWidget *box;
+-  GtkWidget *p;
+   GtkWidget *button;
+   GtkWidget *label;
+   gint i;
+   GdkRGBA color;
+-  GVariant *variant;
+   GVariantIter iter;
+   gboolean selected;
+   AtkObject *atk_obj;
+-  gchar *text, *name;
+ 
+   cc->priv = gtk_color_chooser_widget_get_instance_private (cc);
+ 
+@@ -554,31 +545,6 @@
+   gtk_color_swatch_set_selectable (GTK_COLOR_SWATCH (button), FALSE);
+   gtk_container_add (GTK_CONTAINER (box), button);
+ 
+-  cc->priv->settings = g_settings_new ("org.gtk.Settings.ColorChooser");
+-  variant = g_settings_get_value (cc->priv->settings, "custom-colors");
+-  g_variant_iter_init (&iter, variant);
+-  i = 0;
+-  p = NULL;
+-  while (g_variant_iter_loop (&iter, "(dddd)", &color.red, &color.green, &color.blue, &color.alpha))
+-    {
+-      i++;
+-      p = gtk_color_swatch_new ();
+-      gtk_color_swatch_set_rgba (GTK_COLOR_SWATCH (p), &color);
+-      gtk_color_swatch_set_can_drop (GTK_COLOR_SWATCH (p), TRUE);
+-      atk_obj = gtk_widget_get_accessible (p);
+-      name = accessible_color_name (&color);
+-      text = g_strdup_printf (_("Custom color %d: %s"), i, name);
+-      atk_object_set_name (atk_obj, text);
+-      g_free (text);
+-      g_free (name);
+-      connect_custom_signals (p, cc);
+-      gtk_container_add (GTK_CONTAINER (box), p);
+-
+-      if (i == 9)
+-        break;
+-    }
+-  g_variant_unref (variant);
+-
+   cc->priv->editor = gtk_color_editor_new ();
+   gtk_widget_set_halign (cc->priv->editor, GTK_ALIGN_CENTER);
+   gtk_widget_set_hexpand (cc->priv->editor, TRUE);
+@@ -589,12 +555,6 @@
+   gtk_container_add (GTK_CONTAINER (cc), box);
+   gtk_container_add (GTK_CONTAINER (box), cc->priv->editor);
+ 
+-  g_settings_get (cc->priv->settings, "selected-color", "(bdddd)",
+-                  &selected,
+-                  &color.red, &color.green, &color.blue, &color.alpha);
+-  if (selected)
+-    gtk_color_chooser_set_rgba (GTK_COLOR_CHOOSER (cc), &color);
+-
+   gtk_widget_show_all (GTK_WIDGET (cc));
+   gtk_widget_hide (GTK_WIDGET (cc->priv->editor));
+   gtk_widget_hide (GTK_WIDGET (cc));
+@@ -674,7 +634,6 @@
+   GtkColorChooserWidget *cc = GTK_COLOR_CHOOSER_WIDGET (object);
+ 
+   g_object_unref (cc->priv->size_group);
+-  g_object_unref (cc->priv->settings);
+ 
+   G_OBJECT_CLASS (gtk_color_chooser_widget_parent_class)->finalize (object);
+ }
+--- a/gtk/gtkfilechooserutils.c 2016-10-22 06:17:28.000000000 +0200
++++ b/gtk/gtkfilechooserutils.c 2018-12-08 00:11:54.436736717 +0100
+@@ -443,28 +443,7 @@
+ GSettings *
+ _gtk_file_chooser_get_settings_for_widget (GtkWidget *widget)
+ {
+-  static GQuark file_chooser_settings_quark = 0;
+-  GtkSettings *gtksettings;
+-  GSettings *settings;
+-
+-  if (G_UNLIKELY (file_chooser_settings_quark == 0))
+-    file_chooser_settings_quark = g_quark_from_static_string ("-gtk-file-chooser-settings");
+-
+-  gtksettings = gtk_widget_get_settings (widget);
+-  settings = g_object_get_qdata (G_OBJECT (gtksettings), file_chooser_settings_quark);
+-
+-  if (G_UNLIKELY (settings == NULL))
+-    {
+-      settings = g_settings_new ("org.gtk.Settings.FileChooser");
+-      g_settings_delay (settings);
+-
+-      g_object_set_qdata_full (G_OBJECT (gtksettings),
+-                               file_chooser_settings_quark,
+-                               settings,
+-                               g_object_unref);
+-    }
+-
+-  return settings;
++  return NULL;
+ }
+ 
+ gchar *

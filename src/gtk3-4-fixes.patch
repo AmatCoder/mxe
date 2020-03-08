@@ -1,0 +1,63 @@
+--- a/gtk/gtk.gresource.xml	2018-04-16 20:10:36.000000000 +0200
++++ b/gtk/gtk.gresource.xml	2020-02-02 01:41:03.326727349 +0100
+@@ -6,6 +6,11 @@
+     <file>theme/Adwaita/gtk-dark.css</file>
+     <file>theme/Adwaita/gtk-contained.css</file>
+     <file>theme/Adwaita/gtk-contained-dark.css</file>
++    <file>theme/Windows10/gtk.css</file>
++    <file>theme/Windows10/gtk-dark.css</file>
++    <file>theme/Windows10/gtk-contained.css</file>
++    <file>theme/Windows10/gtk-widgets-assets-dark.css</file>
++    <file>theme/Windows10/gtk-widgets-assets.css</file>
+     <file preprocess='to-pixdata'>theme/Adwaita/assets/bullet-symbolic.symbolic.png</file>
+     <file preprocess='to-pixdata'>theme/Adwaita/assets/checkbox-active-selectionmode@2.png</file>
+     <file preprocess='to-pixdata'>theme/Adwaita/assets/checkbox-active-selectionmode.png</file>
+@@ -145,6 +150,34 @@
+     <file preprocess='to-pixdata'>theme/Adwaita/assets/text-select-start-hover-dark.png</file>
+     <file preprocess='to-pixdata'>theme/Adwaita/assets/text-select-start-hover.png</file>
+     <file preprocess='to-pixdata'>theme/Adwaita/assets/text-select-start.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-selected.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-selected-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-selected-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unselected.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unselected-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unselected-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-insensitive-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-over-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-insensitive-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-over-dark.png</file>
+     <file>theme/Adwaita/assets/bullet-symbolic.svg</file>
+     <file>theme/Adwaita/assets/check-symbolic.svg</file>
+     <file>theme/Adwaita/assets/dash-symbolic.svg</file>
+@@ -220,6 +253,13 @@
+     <file>icons/16x16/actions/gtk-select-font.png</file>
+     <file>icons/16x16/actions/gtk-undelete.png</file>
+     <file>icons/16x16/actions/gtk-undelete-rtl.png</file>
++    <file>icons/16x16/actions/list-add-symbolic.png</file>
++    <file>icons/16x16/actions/list-remove-symbolic.png</file>
++    <file>icons/16x16/actions/object-select-symbolic.png</file>
++    <file>icons/16x16/actions/pan-down-symbolic.png</file>
++    <file>icons/16x16/actions/pan-end-symbolic.png</file>
++    <file>icons/16x16/actions/pan-up-symbolic.png</file>
++    <file>icons/16x16/status/folder-open.png</file>
+     <file>icons/16x16/status/image-missing.png</file>
+     <file>icons/22x22/actions/gtk-apply.png</file>
+     <file>icons/22x22/actions/gtk-cancel.png</file>
