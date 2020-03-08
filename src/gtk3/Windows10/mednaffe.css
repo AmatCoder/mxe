@@ -1,0 +1,30 @@
+/*Windows10*/
+
+menubar {
+  border-bottom: 1px #ACACAC solid;
+}
+
+notebook>header>tabs {
+  margin: 1px;
+}
+
+treeview {
+  border-left: 0px #e0e0e0 solid;
+  border-right: 0px #e0e0e0 solid;
+}
+
+treeview>header>button {
+  border: 1px #e0e0e0 solid;
+ }
+
+treeview>header>button:hover {
+  background-color: #f0f8ff;
+ }
+
+notebook {
+  border-left: 1px #f0f0f0 solid;
+}
+
+scale {
+  min-height: 0px;
+}
