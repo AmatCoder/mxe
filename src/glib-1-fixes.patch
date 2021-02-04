@@ -554,25 +554,17 @@ that pops up when using GtkApplication in Gtk+ 3 programs.
 
 diff --git a/gio/gdbusaddress.c b/gio/gdbusaddress.c
 index 1111111..2222222 100644
---- a/gio/gdbusaddress.c
-+++ b/gio/gdbusaddress.c
-@@ -1387,6 +1387,7 @@ __declspec(dllexport) void CALLBACK g_win32_run_session_bus (HWND hwnd, HINSTANC
- __declspec(dllexport) void CALLBACK
- g_win32_run_session_bus (HWND hwnd, HINSTANCE hinst, char *cmdline, int nCmdShow)
- {
-+  /*
-   GDBusDaemon *daemon;
-   GMainLoop *loop;
-   const char *address;
-@@ -1418,6 +1419,7 @@ g_win32_run_session_bus (HWND hwnd, HINSTANCE hinst, char *cmdline, int nCmdShow
- 
-   g_main_loop_unref (loop);
-   g_object_unref (daemon);
-+  */
+--- a/gio/gdbusaddress.c	2016-11-07 16:25:28.000000000 +0100
++++ b/gio/gdbusaddress.c	2020-05-08 20:16:50.060099688 +0200
+@@ -1171,7 +1171,7 @@
  }
  
- static gchar *
-
+ /* end of G_OS_UNIX case */
+-#elif defined(G_OS_WIN32)
++#elif defined(G_OS_NOT)
+ 
+ #define DBUS_DAEMON_ADDRESS_INFO "DBusDaemonAddressInfo"
+ #define DBUS_DAEMON_MUTEX "DBusDaemonMutex"
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: aquiles2k <aj@elane2k.com>
 Date: Wed, 6 Apr 2016 22:39:53 +0300
