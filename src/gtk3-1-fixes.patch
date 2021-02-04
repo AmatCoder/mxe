@@ -102,7 +102,7 @@ index 1111111..2222222 100644
  G_BEGIN_DECLS
  
 -#define DEFAULT_THEME_NAME      "Adwaita"
-+ #define DEFAULT_THEME_NAME      "Windows10" //"win32"
++ #define DEFAULT_THEME_NAME      "Windows10" //"win32" or "Adwaita"
  #define DEFAULT_ICON_THEME      "Adwaita"
  
  void                _gtk_settings_set_property_value_from_rc (GtkSettings            *settings,
@@ -129,3 +129,11 @@ diff -u a/gtk/gtkspinbutton.c b/gtk/gtkspinbutton.c
    gtk_css_gadget_add_class (priv->up_button, "up");
    gtk_css_node_set_parent (gtk_css_gadget_get_node (priv->up_button), widget_node);
    gtk_css_node_set_state (gtk_css_gadget_get_node (priv->up_button), gtk_css_node_get_state (widget_node));
+
+--- a/gtk/theme/win32/gtk.css	2016-10-22 06:17:35.000000000 +0200
++++ b/gtk/theme/win32/gtk.css	2020-03-10 14:25:35.832275351 +0100
+@@ -1,4 +1,5 @@
+ @import url("gtk-win32-base.css");
++@import url("mednaffe.css");
+ 
+ /* Menus */
