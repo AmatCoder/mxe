@@ -1,63 +1,144 @@
 --- a/gtk/gtk.gresource.xml	2018-04-16 20:10:36.000000000 +0200
 +++ b/gtk/gtk.gresource.xml	2020-02-02 01:41:03.326727349 +0100
-@@ -6,6 +6,11 @@
+@@ -6,6 +6,9 @@
      <file>theme/Adwaita/gtk-dark.css</file>
      <file>theme/Adwaita/gtk-contained.css</file>
      <file>theme/Adwaita/gtk-contained-dark.css</file>
++    <file>theme/win32/mednaffe.css</file>
 +    <file>theme/Windows10/gtk.css</file>
 +    <file>theme/Windows10/gtk-dark.css</file>
-+    <file>theme/Windows10/gtk-contained.css</file>
-+    <file>theme/Windows10/gtk-widgets-assets-dark.css</file>
-+    <file>theme/Windows10/gtk-widgets-assets.css</file>
      <file preprocess='to-pixdata'>theme/Adwaita/assets/bullet-symbolic.symbolic.png</file>
      <file preprocess='to-pixdata'>theme/Adwaita/assets/checkbox-active-selectionmode@2.png</file>
      <file preprocess='to-pixdata'>theme/Adwaita/assets/checkbox-active-selectionmode.png</file>
-@@ -145,6 +150,34 @@
+@@ -145,6 +148,107 @@
      <file preprocess='to-pixdata'>theme/Adwaita/assets/text-select-start-hover-dark.png</file>
      <file preprocess='to-pixdata'>theme/Adwaita/assets/text-select-start-hover.png</file>
      <file preprocess='to-pixdata'>theme/Adwaita/assets/text-select-start.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-down-active.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-down.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-left-active.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-left.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-right-active.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-right.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-up-active.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/arrow-up.svg</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-insensitive-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-insensitive-unfocused@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-insensitive@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-over.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-over@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-checked@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-insensitive-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-insensitive-unfocused@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-insensitive.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-over@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-mixed@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-insensitive-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-insensitive-unfocused@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-insensitive@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-over.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-over@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/checkbox-unchecked@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/close-focused-active.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/close-focused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/close-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/maximize-focused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/maximize-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/minimize-focused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/minimize-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-insensitive-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-insensitive-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-over@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-checked@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-insensitive-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-insensitive-unfocused@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-insensitive.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-selected.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-selected-insensitive.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-selected-over.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unselected.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unselected-insensitive.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unselected-over.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-over@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-mixed@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-insensitive-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-insensitive-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-over.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-over@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked-unfocused@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/radio-unchecked@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/restore-focused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/restore-unfocused.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-hover.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-hover@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-insensitive.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-insensitive-dark.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-over.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-over-dark.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-top-hover.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-top-hover@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-top-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-top-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-top.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz-top@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-horiz@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-hover.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-hover@2.png</file>
 +    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-insensitive.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-insensitive-dark.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-over.png</file>
-+    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-over-dark.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-left-hover.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-left-hover@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-left-insensitive.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-left-insensitive@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-left.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert-left@2.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert.png</file>
++    <file preprocess='to-pixdata'>theme/Windows10/assets/slider-vert@2.png</file>
      <file>theme/Adwaita/assets/bullet-symbolic.svg</file>
      <file>theme/Adwaita/assets/check-symbolic.svg</file>
      <file>theme/Adwaita/assets/dash-symbolic.svg</file>
-@@ -220,6 +253,13 @@
+@@ -220,6 +324,23 @@
      <file>icons/16x16/actions/gtk-select-font.png</file>
      <file>icons/16x16/actions/gtk-undelete.png</file>
      <file>icons/16x16/actions/gtk-undelete-rtl.png</file>
++    <file>icons/16x16/actions/document-page-setup.png</file>
++    <file>icons/16x16/actions/edit-delete.png</file>
++    <file>icons/16x16/actions/folder-open.png</file>
++    <file>icons/16x16/actions/go-down.png</file>
++    <file>icons/16x16/actions/go-up.png</file>
++    <file>icons/16x16/actions/gtk-clear.png</file>
 +    <file>icons/16x16/actions/list-add-symbolic.png</file>
 +    <file>icons/16x16/actions/list-remove-symbolic.png</file>
 +    <file>icons/16x16/actions/object-select-symbolic.png</file>
-+    <file>icons/16x16/actions/pan-down-symbolic.png</file>
-+    <file>icons/16x16/actions/pan-end-symbolic.png</file>
-+    <file>icons/16x16/actions/pan-up-symbolic.png</file>
-+    <file>icons/16x16/status/folder-open.png</file>
++    <file>icons/16x16/actions/pan-down-symbolic.symbolic.png</file>
++    <file>icons/16x16/actions/pan-end-symbolic.symbolic.png</file>
++    <file>icons/16x16/actions/pan-up-symbolic.symbolic.png</file>
++    <file>icons/16x16/actions/window-close-symbolic.symbolic.png</file>
++    <file>icons/16x16/actions/window-maximize-symbolic.symbolic.png</file>
++    <file>icons/16x16/actions/window-minimize-symbolic.symbolic.png</file>
++    <file>icons/16x16/actions/window-new-symbolic.symbolic.png</file>
++    <file>icons/16x16/actions/window-restore-symbolic.symbolic.png</file>
      <file>icons/16x16/status/image-missing.png</file>
      <file>icons/22x22/actions/gtk-apply.png</file>
      <file>icons/22x22/actions/gtk-cancel.png</file>
