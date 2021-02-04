@@ -9,7 +9,7 @@ $(PKG)_CHECKSUM := a1a4a5c12703d4e1ccda28333b87ff462741dc365131fbc94c218ae81d9a6
 $(PKG)_SUBDIR   := gtk+-$($(PKG)_VERSION)
 $(PKG)_FILE     := gtk+-$($(PKG)_VERSION).tar.xz
 $(PKG)_URL      := https://download.gnome.org/sources/gtk+/$(call SHORT_PKG_VERSION,$(PKG))/$($(PKG)_FILE)
-$(PKG)_DEPS     := cc atk cairo gdk-pixbuf glib jasper jpeg libepoxy libpng pango tiff
+$(PKG)_DEPS     := cc atk cairo gdk-pixbuf glib libepoxy libpng pango tiff
 
 define $(PKG)_UPDATE
     $(WGET) -q -O- 'https://git.gnome.org/browse/gtk+/refs/tags' | \
@@ -20,11 +20,14 @@ define $(PKG)_UPDATE
 endef
 
 define $(PKG)_BUILD
-    cp ./src/gtk3/*.png '$(SOURCE_DIR)'/gtk/icons/16x16/actions/
-    cp ./src/gtk3/*.png '$(SOURCE_DIR)'/gtk/icons/16x16/status/
+    cp ./src/gtk3/actions/*.png '$(SOURCE_DIR)'/gtk/icons/16x16/actions/
+    cp ./src/gtk3/ui/*.png '$(SOURCE_DIR)'/gtk/icons/16x16/actions/
+
     mkdir -p '$(SOURCE_DIR)'/gtk/theme/Windows10/assets/
     cp ./src/gtk3/Windows10/*.* '$(SOURCE_DIR)'/gtk/theme/Windows10/
     cp ./src/gtk3/Windows10/assets/*.* '$(SOURCE_DIR)'/gtk/theme/Windows10/assets/
+    cp ./src/gtk3/win32/*.* '$(SOURCE_DIR)'/gtk/theme/win32/
+
     cd '$(BUILD_DIR)' && '$(SOURCE_DIR)/configure' \
         $(MXE_CONFIGURE_OPTS) \
         --enable-explicit-deps \
@@ -39,12 +42,13 @@ define $(PKG)_BUILD
         --disable-gtk-doc \
         --disable-man \
         --disable-nls \
-        --enable-debug=yes \
+        --enable-debug=no \
         --enable-introspection=no \
         --enable-colord=no \
         --with-included-immodules \
         --enable-win32-backend \
         --without-x
+
     $(MAKE) -C '$(BUILD_DIR)' -j '$(JOBS)' $(MXE_DISABLE_CRUFT) EXTRA_DIST=
     $(MAKE) -C '$(BUILD_DIR)' -j 1 install $(MXE_DISABLE_CRUFT) EXTRA_DIST=
 
