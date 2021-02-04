@@ -37,10 +37,8 @@ LIBTOOL    := $(shell glibtool --help >/dev/null 2>&1 && echo g)libtool
 LIBTOOLIZE := $(shell glibtoolize --help >/dev/null 2>&1 && echo g)libtoolize
 OPENSSL    := openssl
 PATCH      := $(shell gpatch --help >/dev/null 2>&1 && echo g)patch
-PYTHON2    := $(or $(shell ([ `python -c "import sys; print('{0[0]}'.format(sys.version_info))"` == 2 ] && echo python) 2>/dev/null || \
-                           which python2 2>/dev/null || \
-                           which python2.7 2>/dev/null), \
-                   $(warning Warning: python v2 not found (or default python changed to v3))\
+PYTHON     := $(or $(shell ([ `python -c "import sys; print('{0[0]}'.format(sys.version_info))"` == 3 ] && echo python) 2>/dev/null), || \
+                   $(warning Warning: python v3 not found (or default python changed to v2))\
                    $(shell touch check-requirements-failed))
 SED        := $(shell gsed --help >/dev/null 2>&1 && echo g)sed
 SORT       := $(shell gsort --help >/dev/null 2>&1 && echo g)sort
