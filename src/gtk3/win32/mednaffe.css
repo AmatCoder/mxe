@@ -1,0 +1,242 @@
+/*win32*/
+
+entry {
+  min-height: 20px;
+}
+
+combobox {
+  min-height: 25px;
+}
+
+spinbutton {
+  min-height: 20px;
+}
+
+spinbutton.horizontal button.up {
+  all: unset;
+  background-size: 0;
+  margin: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+}
+
+spinbutton.horizontal button.down {
+  all: unset;
+  background-size: 0;
+  margin: -1px;
+  margin-right: 1px;
+  border-left: 1px solid;
+}
+
+spinbutton>entry:disabled {
+  background-color: #f0f0f0;
+}
+
+spinbutton>button.down:disabled,
+spinbutton>button.down:hover {
+  background-color: #f0f0f0;
+}
+
+spinbutton>button.up:disabled,
+spinbutton>button.up:hover{
+  background-color: #f0f0f0;
+}
+
+button {
+  min-width: 60px;
+  min-height: 20px;
+}
+
+scrollbar button, scrollbar .button, .scrollbar button, .scrollbar .button {
+  min-width: 16px;
+  min-height: 16px;
+ }
+
+viewport {
+  background-color: #ffffff;
+  margin:1px;
+}
+
+viewport ~ scrollbar.vertical {
+  margin-top: 1px;
+}
+
+textview ~ scrollbar.vertical {
+  margin-top: 1px;
+}
+
+scale {
+  margin-left: 10px;
+  margin-right: 5px;
+}
+
+treeview>header>button {
+  border-top: 1px solid;
+  border-color: #dcdcdc;
+}
+
+frame {
+  margin: 8px;
+}
+
+textview.view:disabled,
+entry:disabled {
+  background-image: -gtk-win32-theme-part(combobox, 5, 4);
+}
+
+separator,
+separator:hover {
+  color: unset;
+  background-color: @bg_color;
+}
+
+.titlebar separator {
+  background-color: unset;
+}
+
+expander title arrow {
+  background-image: -gtk-win32-theme-part(explorerbar, 6, 1);
+}
+expander title arrow:checked {
+  background-image: -gtk-win32-theme-part(explorerbar, 7, 1);
+}
+expander title:hover arrow {
+  background-image: -gtk-win32-theme-part(explorerbar, 6, 2);
+}
+expander title:hover arrow:checked {
+  background-image: -gtk-win32-theme-part(explorerbar, 7, 2);
+}
+
+
+notebook  {
+    padding: 4px;
+}
+notebook > header > tabs {
+    padding: 0px;
+}
+notebook > header > tabs > tab >label {
+  padding: 2px;
+  min-width: 64px;
+}
+notebook > header > tabs > tab {
+    background-image: -gtk-win32-theme-part(tab, 1, 1);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 1, 1));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 1, 1));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 1, 1));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 1, 1));
+}
+
+notebook > header > tabs > tab:hover {
+    background-image: -gtk-win32-theme-part(tab, 1, 2);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 1, 2));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 1, 2));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 1, 2));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 1, 2));
+}
+
+notebook > header > tabs > tab:focus {
+    background-image: -gtk-win32-theme-part(tab, 1, 5);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 1, 5));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 1, 5));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 1, 5));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 1, 5));
+}
+
+notebook > header > tabs > tab:disabled {
+    background-image: -gtk-win32-theme-part(tab, 1, 4);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 1, 4));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 1, 4));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 1, 4));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 1, 4));
+}
+
+notebook > header > tabs > tab:checked {
+    background-image: -gtk-win32-theme-part(tab, 5, 3);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 5, 3));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 5, 3));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 5, 3));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 5, 3));
+   
+}
+
+notebook > header > tabs > tab:first-child {
+    background-image: -gtk-win32-theme-part(tab, 2, 1);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 2, 1));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 2, 1));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 2, 1));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 2, 1));
+}
+
+notebook > header > tabs > tab:first-child:hover {
+    background-image: -gtk-win32-theme-part(tab, 2, 2);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 2, 2));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 2, 2));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 2, 2));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 2, 2));
+}
+
+notebook > header > tabs > tab:first-child:focus {
+    background-image: -gtk-win32-theme-part(tab, 1, 5);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 2, 5));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 2, 5));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 2, 5));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 2, 5));
+}
+
+notebook > header > tabs > tab:first-child:disabled {
+    background-image: -gtk-win32-theme-part(tab, 1, 4);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 2, 4));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 2, 4));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 2, 4));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 2, 4));
+}
+
+notebook > header > tabs > tab:first-child:checked {
+    background-image: -gtk-win32-theme-part(tab, 6, 3);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 6, 3));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 6, 3));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 6, 3));
+    padding-left: calc(2px + -gtk-win32-part-border-left(tab, 6, 3));
+    margin: 0px;
+}
+
+notebook > header > tabs > tab:last-child {
+    background-image: -gtk-win32-theme-part(tab, 3, 1);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 3, 1));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 3, 1));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 3, 1));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 3, 1));
+}
+
+notebook > header > tabs > tab:last-child:hover {
+    background-image: -gtk-win32-theme-part(tab, 3, 2);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 3, 2));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 3, 2));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 3, 2));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 3, 2));
+}
+
+notebook > header > tabs > tab:last-child:focus {
+    background-image: -gtk-win32-theme-part(tab, 3, 5);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 3, 5));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 3, 5));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 3, 5));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 3, 5));
+}
+
+notebook > header > tabs > tab:last-child:disabled {
+    background-image: -gtk-win32-theme-part(tab, 3, 4);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 3, 4));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 3, 4));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 3, 4));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 3, 4));
+}
+
+notebook > header > tabs > tab:last-child:checked {
+    background-image: -gtk-win32-theme-part(tab, 7, 3);
+    padding-top: calc(1px + -gtk-win32-part-border-top(tab, 7, 3));
+    padding-right: calc(3px + -gtk-win32-part-border-right(tab, 7, 3));
+    padding-bottom: calc(2px + -gtk-win32-part-border-bottom(tab, 7, 3));
+    padding-left: calc(3px + -gtk-win32-part-border-left(tab, 7, 3));
+    margin: 0px;
+}
