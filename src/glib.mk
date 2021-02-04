@@ -9,10 +9,10 @@ $(PKG)_CHECKSUM := be68737c1f268c05493e503b3b654d2b7f43d7d0b8c5556f7e4651b870acf
 $(PKG)_SUBDIR   := glib-$($(PKG)_VERSION)
 $(PKG)_FILE     := glib-$($(PKG)_VERSION).tar.xz
 $(PKG)_URL      := https://download.gnome.org/sources/glib/$(call SHORT_PKG_VERSION,$(PKG))/$($(PKG)_FILE)
-$(PKG)_DEPS     := cc dbus gettext libffi libiconv pcre zlib $(BUILD)~$(PKG)
+$(PKG)_DEPS     := cc gettext libffi zlib $(BUILD)~$(PKG)
 $(PKG)_TARGETS  := $(BUILD) $(MXE_TARGETS)
 
-$(PKG)_DEPS_$(BUILD) := autotools gettext libffi libiconv zlib
+$(PKG)_DEPS_$(BUILD) := autotools gettext libffi zlib
 
 define $(PKG)_UPDATE
     $(WGET) -q -O- 'https://gitlab.gnome.org/GNOME/glib/tags' | \
@@ -34,6 +34,7 @@ define $(PKG)_BUILD_DARWIN
         --disable-xattr \
         --disable-dtrace \
         --disable-libmount \
+        --with-libiconv=gnu \
         --with-pcre=internal \
         PKG_CONFIG='$(PREFIX)/$(TARGET)/bin/pkgconf' \
         CPPFLAGS='-I$(PREFIX)/$(TARGET).gnu/include' \
@@ -98,9 +99,15 @@ define $(PKG)_BUILD
     cd '$(BUILD_DIR)' && '$(SOURCE_DIR)/configure' \
         $(MXE_CONFIGURE_OPTS) \
         --with-threads=win32 \
-        --with-pcre=system \
-        --with-libiconv=gnu \
+        --with-pcre=internal \
         --disable-inotify \
+       --disable-threads \
+        --disable-selinux \
+        --disable-fam \
+        --disable-xattr \
+        --disable-dtrace \
+        --disable-libmount \
+        --with-libiconv=no \
         CXX='$(TARGET)-g++' \
         PKG_CONFIG='$(PREFIX)/bin/$(TARGET)-pkg-config' \
         GLIB_GENMARSHAL='$(PREFIX)/$(TARGET)/bin/glib-genmarshal' \
